@@ -2,9 +2,13 @@
 
 DOLMA
 
+### TO RUN BACKEND
+run app.py
+
 ### TO RUN FRONTEND
-cd into dolma
-npm install
+in a new terminal
+cd into frontend
+npm i (first time only, or when new dependancies have been added)
 npm run dev
 click link
 
