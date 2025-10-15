@@ -2,5 +2,9 @@
 
 DOLMA
 
-chore:aaa
+### TO RUN FRONTEND
+cd into dolma
+npm install
+npm run dev
+click link
 
