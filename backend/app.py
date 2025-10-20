@@ -56,7 +56,7 @@ def chat():
         # If reply is empty or too minimal, re-ask once
         if not reply or reply in ["...", "…", "Ok", "Okay"]:
             regen = client.chat.completions.create(
-                model="gpt-5",
+                model="gpt-4o-mini",
                 messages=messages + [{"role": "user", "content": "Please elaborate."}],
                 max_completion_tokens=250
             )
