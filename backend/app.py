@@ -1,11 +1,5 @@
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify
 from flask_cors import CORS
-from openai import OpenAI
-from dotenv import load_dotenv
-import os
-
-# Load environment variables
-load_dotenv()
 
 app = Flask(__name__)
 CORS(app)
@@ -68,6 +62,9 @@ def chat():
         print("Error:", e)
         return jsonify({"error": str(e)}), 500
 
+@app.route("/api/hello")
+def hello():
+    return jsonify({"message": "Hello from Flask backend!"})
 
 if __name__ == "__main__":
     app.run(debug=True)
