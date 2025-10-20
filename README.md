@@ -3,9 +3,6 @@
 DOLMA
 
 ### TO RUN BACKEND
-create a .env file in backend dir
-store the API key there as:
-OPENAI_API_KEY=xxxxx
 run app.py
 
 ### TO RUN FRONTEND
