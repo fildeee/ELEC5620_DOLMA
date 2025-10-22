@@ -1,9 +1,19 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import "../App.css";
+import { useNavigate } from "react-router-dom";
 
 export default function Settings() {
   const [selectedHat, setSelectedHat] = useState("default");
   const [isConnected, setIsConnected] = useState(false);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    // Check connection status on mount
+    fetch("http://localhost:5000/api/google/status", { credentials: "include" })
+      .then(res => res.json())
+      .then(data => setIsConnected(Boolean(data.connected)))
+      .catch(() => setIsConnected(false));
+  }, []);
 
   const handleHatChange = (hat) => {
     setSelectedHat(hat);
@@ -11,15 +21,15 @@ export default function Settings() {
   };
 
   const handleGoogleConnect = () => {
-    setIsConnected(true);
-    alert("Google Calendar connected successfully!");
+    // this will redirect the browser to Google
+    window.location.href = "http://localhost:5000/api/google/login";
   };
 
   return (
     <div className="settings-page">
       <h1 className="settings-title">Settings</h1>
 
-      {/* ===== Section: Hat Customisation ===== */}
+      {/* Hat Customisation */}
       <section className="settings-section">
         <h2>Change DOLMA's Hat</h2>
         <p className="settings-subtext">
@@ -48,18 +58,29 @@ export default function Settings() {
         </div>
       </section>
 
-      {/* ===== Section: Google Calendar ===== */}
+      {/* Google Calendar */}
       <section className="settings-section">
         <h2>Connect Your Google Calendar</h2>
         <p className="settings-subtext">
-          Let DOLMA manage your schedule by integrating with your Google
-          Calendar.
+          Let DOLMA manage your schedule by integrating with your Google Calendar.
         </p>
         <button
           className={`connect-btn ${isConnected ? "connected" : ""}`}
           onClick={handleGoogleConnect}
+          disabled={isConnected}
+          title={isConnected ? "Already connected" : "Connect Google Calendar"}
         >
-          {isConnected ? "Connected ✅" : "Connect Google Calendar"}
+          {isConnected ? "Connected" : "Connect Google Calendar"}
+        </button>
+      </section>
+
+      {/* Navigation back to DOLMA page */}
+      <section className="settings-section">
+        <button
+          className="connect-btn"
+          onClick={() => navigate("/home")}
+        >
+          ← Back to Chat
         </button>
       </section>
     </div>
