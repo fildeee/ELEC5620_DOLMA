@@ -28,12 +28,8 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar"]
-GOOGLE_CLIENT_SECRETS_FILE = os.getenv(
-    "GOOGLE_CLIENT_SECRETS_FILE", "backend/credentials.json"
-)
-REDIRECT_URI = os.getenv(
-    "GOOGLE_REDIRECT_URI", "http://localhost:5000/api/google/oauth2callback"
-)
+GOOGLE_CLIENT_SECRETS_FILE = "credentials.json"
+REDIRECT_URI = "http://localhost:5000/api/google/oauth2callback"
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
