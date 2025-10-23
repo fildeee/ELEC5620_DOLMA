@@ -4,9 +4,13 @@ from typing import Optional
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
-from google_auth_oauthlib.flow import InstalledAppFlow
 
-from zoneinfo import ZoneInfo
+try:
+    from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+except Exception:
+    ZoneInfo = None
+    class ZoneInfoNotFoundError(Exception):
+        pass
 
 DEFAULT_TZ = os.getenv("USER_TIMEZONE", "UTC")
 
@@ -60,11 +64,27 @@ def is_connected() -> bool:
 def create_calendar_event(summary, description, start_time, end_time):
     service = get_calendar_service()
 
-    if start_time.tzinfo is None:
-        start_time = start_time.replace(tzinfo=ZoneInfo(DEFAULT_TZ))
-    if end_time.tzinfo is None:
-        end_time = end_time.replace(tzinfo=ZoneInfo(DEFAULT_TZ))
-    
+    # Ensure timezone. Prefer python zoneinfo; otherwise add Google timeZone field.
+    tz_name = DEFAULT_TZ
+    def has_tz(dt):
+        return dt.tzinfo is not None and dt.tzinfo.utcoffset(dt) is not None
+
+    start_has_tz = has_tz(start_time)
+    end_has_tz = has_tz(end_time)
+
+    if not start_has_tz and ZoneInfo is not None:
+        try:
+            start_time = start_time.replace(tzinfo=ZoneInfo(tz_name))
+            start_has_tz = True
+        except ZoneInfoNotFoundError:
+            pass
+    if not end_has_tz and ZoneInfo is not None:
+        try:
+            end_time = end_time.replace(tzinfo=ZoneInfo(tz_name))
+            end_has_tz = True
+        except ZoneInfoNotFoundError:
+            pass
+
     event = {
         'summary': summary,
         'description': description,
@@ -75,8 +95,11 @@ def create_calendar_event(summary, description, start_time, end_time):
             'dateTime': end_time.isoformat(),
         },
     }
-    
-    # inserts new event into primary calendar
+    if not start_has_tz:
+        event['start']['timeZone'] = tz_name
+    if not end_has_tz:
+        event['end']['timeZone'] = tz_name
+
     created_event = service.events().insert(calendarId='primary', body=event).execute()
-    print("✅ Created event:", created_event.get("htmlLink"))  # <--- add this
+    print("Created event:", created_event.get("htmlLink"))
     return created_event

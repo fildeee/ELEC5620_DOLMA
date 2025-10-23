@@ -4,12 +4,13 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Tuple
-
 import httpx
+from zoneinfo import ZoneInfo
+import re
 from google_auth_oauthlib.flow import Flow
-
+os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = "1"
 from google_calendar import (
     get_calendar_service,
     is_connected,
@@ -33,6 +34,11 @@ REDIRECT_URI = "http://localhost:5000/api/google/oauth2callback"
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
+USER_TZ_NAME = os.getenv("USER_TIMEZONE", "Australia/Sydney")
+try:
+    USER_TZ = ZoneInfo(USER_TZ_NAME)
+except Exception:
+    USER_TZ = None
 
 def get_client_ip(req: request) -> Optional[str]:
     fwd = req.headers.get("X-Forwarded-For", "").split(",")[0].strip()
@@ -141,6 +147,22 @@ def build_weather_tips(temp: Optional[float], cond_text: Optional[str], wind: Op
 def google_status():
     return jsonify({"connected": is_connected()})
 
+@app.get("/api/google/whoami")
+def google_whoami():
+    try:
+        svc = get_calendar_service()
+        me = svc.calendarList().get(calendarId='primary').execute()
+        return jsonify({
+            "connected": True,
+            "primary_calendar": {
+                "id": me.get("id"),
+                "summary": me.get("summary"),
+                "timeZone": me.get("timeZone"),
+            }
+        })
+    except Exception as e:
+        return jsonify({"connected": False, "error": str(e)}), 400
+
 @app.get("/api/google/login")
 def google_login():
     flow = Flow.from_client_secrets_file(
@@ -195,6 +217,9 @@ def chat():
     if not user_message:
         return jsonify({"error": "No message provided"}), 400
 
+    # Establish 'today' in the configured local timezone (fallback to system time if tzdata missing)
+    today_local = datetime.now(tz=USER_TZ) if USER_TZ is not None else datetime.now()
+
     system_prompt = (
         "You are DOLMA, a friendly and intelligent personal assistant. "
         "Always respond helpfully and conversationally, even for repeated questions. "
@@ -204,12 +229,19 @@ def chat():
         "Only change the user's calendar upon explicit instructions. "
         "If a scheduling conflict arises, suggest polite alternatives. "
         "Do not add or remove events without explicit consent; summarize details first and ask for confirmation. "
-        "It's 2025 in Sydney, Australia—include the year in dates you mention. "
+        "It is Australia/Sydney timezone. Include the year in any dates you mention. "
+        "Interpret numeric dates in Australian day-first format (DD/MM/YYYY). When day and month are both <= 12, explicitly confirm by spelling out the month before adding to calendar. "
+        "Always output RFC3339 datetimes with timezone offset (e.g., 2025-11-22T14:00:00+11:00). "
         "You can obtain weather for the user's location and provide schedule suggestions based on conditions. "
         "If user grants location, use it to personalize recommendations."
     )
 
     messages = [{"role": "system", "content": system_prompt}]
+    tz_label = USER_TZ_NAME if USER_TZ is not None else "local system timezone"
+    messages.append({
+        "role": "system",
+        "content": f"Current local date/time: {today_local.isoformat()} ({tz_label}). Treat this as 'today'."
+    })
 
     trimmed_history = [m for m in conversation if m.get("role") in ("user", "assistant")][-6:]
     messages.extend({"role": m["role"], "content": m.get("text", "")} for m in trimmed_history)
@@ -227,6 +259,14 @@ def chat():
             lat = lon = None
 
     messages.append({"role": "user", "content": user_message})
+    # Detect ambiguous numeric date patterns in the latest user message (e.g., 07/04)
+    ambiguous_numeric = False
+    if isinstance(user_message, str):
+        for m in re.finditer(r"\b(\d{1,2})[\/-](\d{1,2})(?:[\/-](\d{2,4}))?\b", user_message):
+            d1 = int(m.group(1)); d2 = int(m.group(2))
+            if 1 <= d1 <= 12 and 1 <= d2 <= 12:
+                ambiguous_numeric = True
+                break
 
     text_l = (user_message or "").lower()
     wants_weather = any(k in text_l for k in ["weather", "forecast", "temperature", "rain", "sunny"]) \
@@ -298,19 +338,51 @@ def chat():
                         return jsonify({
                             "reply": f"I need a bit more info. Could you tell me the {', '.join(missing)}?"
                         })
+                    # If numeric dates in the user's request might be ambiguous (DD/MM vs MM/DD),
+                    # force a preview step even if the model set confirm=true.
+                    if args.get("confirm") and ambiguous_numeric:
+                        preview = (
+                            "Here’s what I’ll add (please confirm the date spelling):\n"
+                            f"- {args['summary']}\n"
+                            f"- From: {args['start_time']}\n"
+                            f"- To:   {args['end_time']}"
+                        )
+                        return jsonify({
+                            "reply": preview + "\nIs this date correct (day-first as used in AU)?"
+                        })
                     if args.get("confirm"):
                         try:
                             start_dt = datetime.fromisoformat(args["start_time"].replace("Z", "+00:00"))
                             end_dt = datetime.fromisoformat(args["end_time"].replace("Z", "+00:00"))
-                            _ = create_calendar_event(
+                            # Guard: avoid adding clearly past events without explicit reconfirmation
+                            if start_dt < today_local - timedelta(days=1):
+                                preview = (
+                                    "The chosen time appears to be in the past.\n"
+                                    f"- From: {args['start_time']}\n"
+                                    f"- To:   {args['end_time']}\n"
+                                    "Please confirm the intended date (spell out the month, e.g., 7 April 2025)."
+                                )
+                                return jsonify({"reply": preview})
+                            created = create_calendar_event(
                                 summary=args["summary"],
                                 description=args.get("description", ""),
                                 start_time=start_dt,
                                 end_time=end_dt,
                             )
-                            return jsonify({
-                                "reply": f"The event '{args['summary']}' has been added to your calendar!"
-                            })
+                            try:
+                                status = (created or {}).get("status")
+                                link = (created or {}).get("htmlLink")
+                                if status and status.lower() == "confirmed":
+                                    msg_ok = f"The event '{args['summary']}' was added."
+                                else:
+                                    msg_ok = f"The event '{args['summary']}' was submitted to Google Calendar."
+                                if link:
+                                    msg_ok += f" View: {link}"
+                                return jsonify({"reply": msg_ok})
+                            except Exception:
+                                return jsonify({
+                                    "reply": f"The event '{args['summary']}' was requested. Please check your Google Calendar."
+                                })
                         except Exception as e:
                             return jsonify({"reply": f"Couldn't create the event: {e}"})
                     preview = (
