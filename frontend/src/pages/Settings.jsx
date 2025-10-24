@@ -7,11 +7,14 @@ export default function Settings() {
   const [isConnected, setIsConnected] = useState(false);
   const navigate = useNavigate();
 
+  // 🌐 Use environment-based backend URL
+  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
+
   useEffect(() => {
     // Check connection status on mount
-    fetch("http://localhost:5000/api/google/status", { credentials: "include" })
-      .then(res => res.json())
-      .then(data => setIsConnected(Boolean(data.connected)))
+    fetch(`${API_BASE}/api/google/status`, { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => setIsConnected(Boolean(data.connected)))
       .catch(() => setIsConnected(false));
   }, []);
 
@@ -21,9 +24,11 @@ export default function Settings() {
   };
 
   const handleGoogleConnect = () => {
-    // this will redirect the browser to Google
-    window.location.href = "http://localhost:5000/api/google/login";
+    // Always redirect the browser to localhost (it can’t see the Docker hostname “backend”)
+    const backendURL = "http://localhost:5000";
+    window.location.href = `${backendURL}/api/google/login`;
   };
+
 
   return (
     <div className="settings-page">
@@ -74,12 +79,9 @@ export default function Settings() {
         </button>
       </section>
 
-      {/* Navigation back to DOLMA page */}
+      {/* Navigation */}
       <section className="settings-section">
-        <button
-          className="connect-btn"
-          onClick={() => navigate("/home")}
-        >
+        <button className="connect-btn" onClick={() => navigate("/home")}>
           ← Back to Chat
         </button>
       </section>

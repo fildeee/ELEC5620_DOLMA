@@ -31,3 +31,20 @@ npm run dev
 
 click link
 
+### TO RUN WITH DOCKER
+
+#### INITIAL SETUP
+
+add a .env file in frontend containing: VITE_API_BASE=http://localhost:5000
+
+in the backend/.env, add: FRONTEND_URL=http://localhost:5173
+
+download docker
+
+#### EVERYTIME
+
+launch the docker app
+
+from root, run: docker compose up --build
+
+this will launch both frontend and backend
