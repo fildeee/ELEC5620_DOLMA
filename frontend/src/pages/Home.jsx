@@ -38,11 +38,22 @@ function TipsCard({ tips, place, weather }) {
 
   const metrics = [];
   if (weather) {
-    if (typeof weather.cond === "string" && weather.cond.trim()) metrics.push({ label: "Weather", value: weather.cond });
-    if (typeof weather.temp === "number") metrics.push({ label: "Temp", value: `${Math.round(weather.temp)}°C` });
-    if (typeof weather.feels === "number") metrics.push({ label: "Feels Like", value: `${Math.round(weather.feels)}°C` });
-    if (typeof weather.humidity === "number") metrics.push({ label: "Humidity", value: `${Math.round(weather.humidity)}%` });
-    if (typeof weather.wind === "number") metrics.push({ label: "Wind", value: `${weather.wind} m/s` });
+    if (typeof weather.cond === "string" && weather.cond.trim())
+      metrics.push({ label: "Weather", value: weather.cond });
+    if (typeof weather.temp === "number")
+      metrics.push({ label: "Temp", value: `${Math.round(weather.temp)}°C` });
+    if (typeof weather.feels === "number")
+      metrics.push({
+        label: "Feels Like",
+        value: `${Math.round(weather.feels)}°C`,
+      });
+    if (typeof weather.humidity === "number")
+      metrics.push({
+        label: "Humidity",
+        value: `${Math.round(weather.humidity)}%`,
+      });
+    if (typeof weather.wind === "number")
+      metrics.push({ label: "Wind", value: `${weather.wind} m/s` });
   }
 
   return (
@@ -61,7 +72,9 @@ function TipsCard({ tips, place, weather }) {
           ))}
         </div>
       )}
-      {tips && <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{tips}</div>}
+      {tips && (
+        <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{tips}</div>
+      )}
     </div>
   );
 }
@@ -74,12 +87,15 @@ export default function Home() {
     },
   ]);
   const [input, setInput] = useState("");
-  const [coords, setCoords] = useState(null); // { lat, lon }
+  const [coords, setCoords] = useState(null);
   const [locError, setLocError] = useState(null);
-  const [locInfo, setLocInfo] = useState(null); // info text for fallback status
-  const [permState, setPermState] = useState(null); // 'granted' | 'denied' | 'prompt' | null
+  const [locInfo, setLocInfo] = useState(null);
+  const [permState, setPermState] = useState(null);
   const chatEndRef = useRef(null);
   const navigate = useNavigate();
+
+  // 🌐 Base URL from .env (VITE_API_BASE)
+  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -89,7 +105,6 @@ export default function Home() {
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
 
-    // Only keep valid roles and non-empty messages
     const filteredConversation = messages.filter(
       (msg) =>
         msg &&
@@ -98,7 +113,7 @@ export default function Home() {
     );
 
     try {
-      const response = await fetch("http://127.0.0.1:5000/api/chat", {
+      const response = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -107,6 +122,10 @@ export default function Home() {
           location: coords,
         }),
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
 
       const data = await response.json();
       console.log("DOLMA response:", data);
@@ -146,7 +165,6 @@ export default function Home() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  // Request geolocation; in some browsers (iOS/Safari) must be user-initiated
   const requestLocation = () => {
     if (!("geolocation" in navigator)) {
       setLocError("Geolocation not supported by this browser.");
@@ -168,7 +186,6 @@ export default function Home() {
     );
   };
 
-  // Try permissions API to decide behavior; fall back to IP-based approx if denied
   useEffect(() => {
     let cancelled = false;
     const checkPerm = async () => {
@@ -181,23 +198,22 @@ export default function Home() {
           if (status.state === "granted") {
             requestLocation();
           } else if (status.state === "prompt") {
-            // Attempt once on load; some browsers will show prompt
             requestLocation();
           } else if (status.state === "denied") {
-            // Fallback to IP-based approx so weather still works in demos
             try {
               const resp = await fetch("https://ipapi.co/json/");
               const j = await resp.json();
-              if (j && typeof j.latitude === "number" && typeof j.longitude === "number") {
+              if (
+                j &&
+                typeof j.latitude === "number" &&
+                typeof j.longitude === "number"
+              ) {
                 setCoords({ lat: j.latitude, lon: j.longitude });
                 setLocInfo("Using approximate location based on IP.");
               }
-            } catch (_) {
-              // ignore
-            }
+            } catch (_) {}
           }
         } else {
-          // No Permissions API; try once
           requestLocation();
         }
       } catch (_) {
@@ -212,7 +228,6 @@ export default function Home() {
 
   return (
     <div className="dolma-layout">
-      {/* ===== Sidebar ===== */}
       <aside className="dolma-sidebar">
         <div className="sidebar-header">
           <h2 className="sidebar-logo">DOLMA</h2>
@@ -223,10 +238,7 @@ export default function Home() {
         </div>
 
         <div className="sidebar-footer">
-          <button
-            className="sidebar-btn"
-            onClick={() => navigate("/settings")}
-          >
+          <button className="sidebar-btn" onClick={() => navigate("/settings")}>
             ⚙️ Settings
           </button>
           <button
@@ -241,7 +253,6 @@ export default function Home() {
         </div>
       </aside>
 
-      {/* ===== Chat Window ===== */}
       <main className="dolma-chat">
         <div className="chat-messages">
           {messages.map((msg, i) => (
@@ -253,7 +264,11 @@ export default function Home() {
             >
               <div className="message-bubble">{msg.text}</div>
               {msg.tips && (
-                <TipsCard tips={msg.tips} place={msg.place} weather={msg.weather} />
+                <TipsCard
+                  tips={msg.tips}
+                  place={msg.place}
+                  weather={msg.weather}
+                />
               )}
             </div>
           ))}
@@ -272,6 +287,7 @@ export default function Home() {
             ➤
           </button>
         </form>
+
         {(locError || locInfo) && (
           <div className="message-row assistant">
             <div className="message-bubble">
@@ -282,21 +298,6 @@ export default function Home() {
                   Tip: Allow location access for local weather and events. ({locError})
                 </span>
               )}
-              <div style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  onClick={requestLocation}
-                  className="sidebar-btn"
-                  style={{ padding: "6px 10px", fontSize: 12 }}
-                >
-                  Enable Location
-                </button>
-                {permState === "denied" && (
-                  <span style={{ marginLeft: 8, fontSize: 12, color: "#778" }}>
-                    If no prompt, enable in browser Site settings → Location.
-                  </span>
-                )}
-              </div>
             </div>
           </div>
         )}
