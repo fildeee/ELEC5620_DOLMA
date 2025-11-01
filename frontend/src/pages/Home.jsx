@@ -1,6 +1,36 @@
-import React, { useState, useRef, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
 import dolmaFace from "../assets/dolma_face.png";
+
+const CATEGORY_UNITS = {
+  fitness: "KM",
+  study: "pages",
+  finance: "$",
+  hours: "hours",
+  other: "",
+};
+
+const HAT_STORAGE_KEY = "dolmaHat";
+const HAT_VARIANTS = {
+  classic: {
+    emoji: "🎩",
+    title: "Classic Counsel",
+  },
+  strategist: {
+    emoji: "🧭",
+    title: "Strategist",
+  },
+  scholar: {
+    emoji: "📚",
+    title: "Scholar",
+  },
+};
+
+const readStoredHat = () => {
+  if (typeof window === "undefined") return "classic";
+  const raw = localStorage.getItem(HAT_STORAGE_KEY);
+  return HAT_VARIANTS[raw] ? raw : "classic";
+};
 
 function TipsCard({ tips, place, weather }) {
   const card = {
@@ -86,16 +116,349 @@ export default function Home() {
       text: "Hello! I'm DOLMA, your intelligent personal assistant. How can I help you today?",
     },
   ]);
+  const [hat, setHat] = useState(readStoredHat);
+  const [isEntering, setIsEntering] = useState(false);
   const [input, setInput] = useState("");
   const [coords, setCoords] = useState(null);
   const [locError, setLocError] = useState(null);
   const [locInfo, setLocInfo] = useState(null);
   const [permState, setPermState] = useState(null);
+  const [goals, setGoals] = useState([]);
+  const [goalForm, setGoalForm] = useState({
+    title: "",
+    description: "",
+    target_date: "",
+    target_value: "",
+    category: "fitness",
+    custom_unit: "",
+  });
+  const [progressDrafts, setProgressDrafts] = useState({});
+  const [goalError, setGoalError] = useState(null);
+  const [goalMessage, setGoalMessage] = useState(null);
+  const [goalLoading, setGoalLoading] = useState(false);
+  const [goalSaving, setGoalSaving] = useState(false);
   const chatEndRef = useRef(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // 🌐 Base URL from .env (VITE_API_BASE)
-  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
+  // 🌐 Base URL from .env (VITE_API_BASE) with sensible fallbacks
+  const resolveApiBase = () => {
+    const raw = import.meta.env.VITE_API_BASE;
+    if (typeof raw === "string" && raw.trim()) {
+      const cleaned = raw.trim().replace(/\/+$/, "");
+      if (!/^https?:\/\//i.test(cleaned)) {
+        console.warn(
+          `[DOLMA] VITE_API_BASE lacks protocol, defaulting to http://: ${cleaned}`
+        );
+        return `http://${cleaned}`;
+      }
+      return cleaned;
+    }
+    if (typeof window !== "undefined") {
+      const { protocol, hostname } = window.location;
+      const defaultPort = protocol === "https:" ? "5001" : "5050";
+      return `${protocol}//${hostname}:${defaultPort}`;
+    }
+    return "http://localhost:5050";
+  };
+
+  const API_BASE = resolveApiBase();
+  const apiUrl = (path) => `${API_BASE}${path}`;
+  const formatNumber = (value) => {
+    if (typeof value !== "number" || Number.isNaN(value)) {
+      return null;
+    }
+    const rounded = Math.round(value);
+    if (Math.abs(value - rounded) < 1e-6) {
+      return String(rounded);
+    }
+    return value.toFixed(1).replace(/\.0$/, "");
+  };
+  const formatWithUnit = (value, unitSymbol) => {
+    if (value === null || value === undefined) return null;
+    const numText = formatNumber(value);
+    if (!numText) return null;
+    if (!unitSymbol) return numText;
+    if (unitSymbol === "$") return `$${numText}`;
+    if (unitSymbol.toLowerCase() === "hours") {
+      return `${numText} hours`;
+    }
+    return `${numText} ${unitSymbol}`;
+  };
+  const hatMeta = HAT_VARIANTS[hat] || HAT_VARIANTS.classic;
+
+  const fetchGoals = useCallback(async () => {
+    try {
+      setGoalLoading(true);
+      setGoalError(null);
+      const resp = await fetch(apiUrl("/api/goals"));
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+      setGoals(Array.isArray(data.goals) ? data.goals : []);
+    } catch (err) {
+      console.error("Fetch goals error:", err);
+      setGoalError(
+        err?.message
+          ? `Unable to load goals: ${err.message}`
+          : "Unable to load goals right now."
+      );
+    } finally {
+      setGoalLoading(false);
+    }
+  }, [API_BASE]);
+
+  useEffect(() => {
+    fetchGoals();
+  }, [fetchGoals]);
+
+  useEffect(() => {
+    console.info("[DOLMA] API base URL:", API_BASE);
+  }, [API_BASE]);
+
+  useEffect(() => {
+    if (location.state?.transition === "fromSettings") {
+      setIsEntering(true);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state, location.pathname, navigate]);
+
+  useEffect(() => {
+    if (!isEntering) return;
+    const timer = window.setTimeout(() => setIsEntering(false), 400);
+    return () => window.clearTimeout(timer);
+  }, [isEntering]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return undefined;
+    }
+    const syncHat = () => setHat(readStoredHat());
+    const handleStorage = (event) => {
+      if (event.key === HAT_STORAGE_KEY) {
+        const incoming = event.newValue;
+        setHat(HAT_VARIANTS[incoming] ? incoming : "classic");
+      }
+    };
+    const handleCustom = (event) => {
+      const incoming = event?.detail?.hat;
+      if (incoming && HAT_VARIANTS[incoming]) {
+        setHat(incoming);
+      } else {
+        syncHat();
+      }
+    };
+    window.addEventListener("storage", handleStorage);
+    window.addEventListener("dolma-hat-change", handleCustom);
+    syncHat();
+    return () => {
+      window.removeEventListener("storage", handleStorage);
+      window.removeEventListener("dolma-hat-change", handleCustom);
+    };
+  }, []);
+
+  useEffect(() => {
+    setProgressDrafts((prev) => {
+      const next = {};
+      (goals || []).forEach((goal) => {
+        if (!goal || !goal.id) {
+          return;
+        }
+        if (Object.prototype.hasOwnProperty.call(prev, goal.id)) {
+          next[goal.id] = prev[goal.id];
+        } else {
+          next[goal.id] = String(
+            typeof goal.progress === "number" ? goal.progress : 0
+          );
+        }
+      });
+      return next;
+    });
+  }, [goals]);
+
+  useEffect(() => {
+    if (!goalMessage) return;
+    const timer = setTimeout(() => setGoalMessage(null), 4000);
+    return () => clearTimeout(timer);
+  }, [goalMessage]);
+
+  const applyGoalUpdate = useCallback(
+    async (goalId, payload, successText) => {
+      try {
+        setGoalError(null);
+        setGoalMessage(null);
+        const resp = await fetch(apiUrl(`/api/goals/${goalId}`), {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) {
+          throw new Error(data.error || `HTTP ${resp.status}`);
+        }
+        const { system_message, ...goalData } = data;
+        setGoals((prev) =>
+          prev.map((goal) => (goal.id === goalId ? goalData : goal))
+        );
+        setProgressDrafts((prev) => ({
+          ...prev,
+          [goalId]: String(goalData.progress ?? 0),
+        }));
+        setGoalMessage(successText || "Goal updated.");
+        if (system_message) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", text: system_message },
+          ]);
+        }
+      } catch (err) {
+        console.error("Update goal error:", err);
+        setGoalError(err.message || "Unable to update goal.");
+      }
+    },
+    [API_BASE]
+  );
+
+  const handleGoalSubmit = async (e) => {
+    e.preventDefault();
+    const trimmedTitle = goalForm.title.trim();
+    if (!trimmedTitle) {
+      setGoalError("Please give your goal a title.");
+      return;
+    }
+    setGoalSaving(true);
+    setGoalMessage(null);
+    setGoalError(null);
+    try {
+      const payload = { title: trimmedTitle };
+      if (goalForm.description.trim()) {
+        payload.description = goalForm.description.trim();
+      }
+      if (goalForm.target_date) {
+        payload.target_date = goalForm.target_date;
+      }
+      const rawTarget = String(goalForm.target_value || "").trim();
+      if (!rawTarget) {
+        setGoalError("Please set a target amount.");
+        setGoalSaving(false);
+        return;
+      }
+      const numericTarget = Number(rawTarget);
+      if (Number.isNaN(numericTarget) || numericTarget <= 0) {
+        setGoalError("Target amount must be a positive number.");
+        setGoalSaving(false);
+        return;
+      }
+      payload.target_value = numericTarget;
+      const category = goalForm.category || "fitness";
+      let unitSymbol = CATEGORY_UNITS[category] || "";
+      if (category === "other") {
+        const customUnit = goalForm.custom_unit.trim();
+        if (!customUnit) {
+          setGoalError("Please provide a unit label for this goal.");
+          setGoalSaving(false);
+          return;
+        }
+        unitSymbol = customUnit;
+      }
+      payload.target_unit = unitSymbol;
+      payload.progress_value = 0;
+      const resp = await fetch(apiUrl("/api/goals"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data.error || `HTTP ${resp.status}`);
+      }
+      setGoals((prev) => [...prev, data]);
+      setGoalForm({
+        title: "",
+        description: "",
+        target_date: "",
+        target_value: "",
+        category: goalForm.category,
+        custom_unit: category === "other" ? goalForm.custom_unit : "",
+      });
+      setGoalMessage("Goal saved!");
+    } catch (err) {
+      console.error("Create goal error:", err);
+      setGoalError(err.message || "Unable to save goal.");
+    } finally {
+      setGoalSaving(false);
+    }
+  };
+
+  const handleProgressDraftChange = (goalId, value) => {
+    setProgressDrafts((prev) => ({
+      ...prev,
+      [goalId]: value,
+    }));
+  };
+
+  const handleProgressApply = async (goalId) => {
+    const raw = progressDrafts[goalId];
+    const numeric = Number(raw);
+    if (Number.isNaN(numeric)) {
+      setGoalError("Progress must be a number between 0 and 100.");
+      return;
+    }
+    const bounded = Math.max(0, Math.min(100, numeric));
+    await applyGoalUpdate(goalId, { progress: bounded }, "Progress updated.");
+  };
+
+  const handleGoalComplete = (goalId) =>
+    applyGoalUpdate(
+      goalId,
+      { progress: 100, status: "completed" },
+      "Nice work! Goal marked complete."
+    );
+
+  const handleGoalArchive = (goalId) =>
+    applyGoalUpdate(goalId, { status: "archived" }, "Goal archived.");
+
+  const handleGoalActivate = (goalId) =>
+    applyGoalUpdate(goalId, { status: "active" }, "Goal reactivated.");
+
+  const handleGoalDelete = async (goalId) => {
+    if (typeof window !== "undefined" && !window.confirm("Remove this goal?")) {
+      return;
+    }
+    try {
+      setGoalError(null);
+      setGoalMessage(null);
+      const resp = await fetch(apiUrl(`/api/goals/${goalId}`), {
+        method: "DELETE",
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        throw new Error(data?.error || `HTTP ${resp.status}`);
+      }
+      const { system_message } = data;
+      setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
+      setProgressDrafts((prev) => {
+        const next = { ...prev };
+        delete next[goalId];
+        return next;
+      });
+      setGoalMessage("Goal removed.");
+      if (system_message) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", text: system_message },
+        ]);
+      }
+    } catch (err) {
+      console.error("Delete goal error:", err);
+      setGoalError(err.message || "Unable to delete goal.");
+    }
+  };
+
+  const handleGoalRefresh = () => {
+    fetchGoals();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -113,7 +476,7 @@ export default function Home() {
     );
 
     try {
-      const response = await fetch(`${API_BASE}/api/chat`, {
+      const response = await fetch(apiUrl("/api/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -123,12 +486,16 @@ export default function Home() {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
+      const data = await response.json().catch(() => ({}));
 
-      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error || `HTTP ${response.status}`);
+      }
       console.log("DOLMA response:", data);
+
+      if (Array.isArray(data.goals)) {
+        setGoals(data.goals);
+      }
 
       if (data && data.reply && data.reply.trim() !== "") {
         const assistantMsg = { role: "assistant", text: data.reply };
@@ -154,9 +521,13 @@ export default function Home() {
       }
     } catch (err) {
       console.error("Network or parsing error:", err);
+      const message =
+        err?.message && err.message !== "Failed to fetch"
+          ? `⚠️ ${err.message}`
+          : "Network error, please try again.";
       setMessages((prev) => [
         ...prev,
-        { role: "assistant", text: "Network error, please try again." },
+        { role: "assistant", text: message },
       ]);
     }
   };
@@ -227,13 +598,16 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="dolma-layout">
+    <div className={`dolma-layout${isEntering ? " entering" : ""}`}>
       <aside className="dolma-sidebar">
         <div className="sidebar-header">
           <h2 className="sidebar-logo">DOLMA</h2>
           <div className="dolma-avatar">
-            <img src={dolmaFace} alt="Dolma avatar" />
-            <p className="avatar-caption">Your AI Assistant</p>
+            <div className="avatar-frame">
+              <img src={dolmaFace} alt="Dolma avatar" />
+              {hatMeta?.emoji && <span className="avatar-hat">{hatMeta.emoji}</span>}
+            </div>
+            <p className="avatar-caption">{hatMeta?.title || "Your AI Assistant"}</p>
           </div>
         </div>
 
@@ -254,43 +628,30 @@ export default function Home() {
       </aside>
 
       <main className="dolma-chat">
-        <div className="chat-messages">
-          {messages.map((msg, i) => (
-            <div
-              key={i}
-              className={`message-row ${
-                msg.role === "user" ? "user" : "assistant"
-              }`}
-            >
-              <div className="message-bubble">{msg.text}</div>
-              {msg.tips && (
-                <TipsCard
-                  tips={msg.tips}
-                  place={msg.place}
-                  weather={msg.weather}
-                />
-              )}
-            </div>
-          ))}
-          <div ref={chatEndRef} />
-        </div>
+        <div className="chat-pane">
+          <div className="chat-messages">
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`message-row ${
+                  msg.role === "user" ? "user" : "assistant"
+                }`}
+              >
+                <div className="message-bubble">{msg.text}</div>
+                {msg.tips && (
+                  <TipsCard
+                    tips={msg.tips}
+                    place={msg.place}
+                    weather={msg.weather}
+                  />
+                )}
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
 
-        <form className="chat-input-bar" onSubmit={handleSubmit}>
-          <input
-            type="text"
-            placeholder="Ask DOLMA anything..."
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            className="chat-input"
-          />
-          <button type="submit" className="send-btn">
-            ➤
-          </button>
-        </form>
-
-        {(locError || locInfo) && (
-          <div className="message-row assistant">
-            <div className="message-bubble">
+          {(locError || locInfo) && (
+            <div className="system-tip">
               {locInfo ? (
                 <span>{locInfo}</span>
               ) : (
@@ -299,8 +660,258 @@ export default function Home() {
                 </span>
               )}
             </div>
+          )}
+
+          <form className="chat-input-bar" onSubmit={handleSubmit}>
+            <input
+              type="text"
+              placeholder="Ask DOLMA anything..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              className="chat-input"
+            />
+            <button type="submit" className="send-btn">
+              ➤
+            </button>
+          </form>
+        </div>
+
+        <aside className="goals-pane">
+          <div className="goals-header">
+            <h3>Goal Tracker</h3>
+            <button
+              type="button"
+              className="goals-refresh"
+              onClick={handleGoalRefresh}
+              disabled={goalLoading}
+              title="Refresh goals"
+            >
+              ⟳
+            </button>
           </div>
-        )}
+
+          {goalMessage && <div className="goal-toast success">{goalMessage}</div>}
+          {goalError && <div className="goal-toast error">{goalError}</div>}
+
+          <form className="goal-form" onSubmit={handleGoalSubmit}>
+            <input
+              type="text"
+              placeholder="What goal should we track?"
+              value={goalForm.title}
+              onChange={(e) =>
+                setGoalForm((prev) => ({ ...prev, title: e.target.value }))
+              }
+            />
+            <div className="goal-form-row">
+              <input
+                type="number"
+                min="0"
+                step="any"
+                placeholder="Target amount"
+                value={goalForm.target_value}
+                onChange={(e) =>
+                  setGoalForm((prev) => ({
+                    ...prev,
+                    target_value: e.target.value,
+                  }))
+                }
+              />
+              <select
+                className="unit-select"
+                value={goalForm.category}
+                onChange={(e) =>
+                  setGoalForm((prev) => ({
+                    ...prev,
+                    category: e.target.value,
+                    custom_unit: e.target.value === "other" ? prev.custom_unit : "",
+                  }))
+                }
+              >
+                <option value="fitness">Fitness (km)</option>
+                <option value="study">Study (pages)</option>
+                <option value="finance">Finance ($)</option>
+                <option value="hours">Focus (hours)</option>
+                <option value="other">Other unit…</option>
+              </select>
+              {goalForm.category === "other" && (
+                <input
+                  type="text"
+                  className="custom-unit-input"
+                  placeholder="Unit label (e.g. reps)"
+                  value={goalForm.custom_unit}
+                  onChange={(e) =>
+                    setGoalForm((prev) => ({
+                      ...prev,
+                      custom_unit: e.target.value,
+                    }))
+                  }
+                />
+              )}
+            </div>
+            <textarea
+              rows="3"
+              placeholder="Optional details"
+              value={goalForm.description}
+              onChange={(e) =>
+                setGoalForm((prev) => ({
+                  ...prev,
+                  description: e.target.value,
+                }))
+              }
+            />
+            <div className="goal-form-row">
+              <input
+                type="date"
+                value={goalForm.target_date}
+                onChange={(e) =>
+                  setGoalForm((prev) => ({
+                    ...prev,
+                    target_date: e.target.value,
+                  }))
+                }
+              />
+              <button type="submit" disabled={goalSaving}>
+                {goalSaving ? "Saving…" : "Add Goal"}
+              </button>
+            </div>
+          </form>
+
+          <div className="goal-list">
+            {goalLoading ? (
+              <p className="goal-placeholder">Loading goals…</p>
+            ) : goals.length === 0 ? (
+              <p className="goal-placeholder">
+                No goals yet. Let’s create one!
+              </p>
+            ) : (
+              goals.map((goal) => {
+                const description = (goal.description || "").trim();
+                const draftPercent =
+                  progressDrafts[goal.id] !== undefined
+                    ? progressDrafts[goal.id]
+                    : String(goal.progress ?? 0);
+                const targetValue =
+                  typeof goal.target_value === "number" ? goal.target_value : null;
+                let progressValue =
+                  typeof goal.progress_value === "number"
+                    ? goal.progress_value
+                    : null;
+                const progressPct =
+                  typeof goal.progress === "number" ? goal.progress : 0;
+                const clampedProgress = Math.max(
+                  0,
+                  Math.min(100, progressPct)
+                );
+                const unitLabel = (goal.target_unit || "").trim();
+                if (progressValue === null && targetValue !== null) {
+                  progressValue = (targetValue * progressPct) / 100;
+                }
+                const remainingValue =
+                  targetValue !== null && progressValue !== null
+                    ? Math.max(targetValue - progressValue, 0)
+                    : null;
+                const targetDisplay =
+                  targetValue !== null ? formatWithUnit(targetValue, unitLabel) : null;
+                const remainingDisplay =
+                  remainingValue !== null ? formatWithUnit(remainingValue, unitLabel) : null;
+                const completedDisplay =
+                  progressValue !== null ? formatWithUnit(progressValue, unitLabel) : null;
+                return (
+                  <div className="goal-card" key={goal.id}>
+                    <div className="goal-card-header">
+                      <div>
+                        <h4>{goal.title || "Untitled goal"}</h4>
+                        {description && <p>{description}</p>}
+                      </div>
+                      <span
+                        className={`goal-status badge-${goal.status || "active"}`}
+                      >
+                        {goal.status || "active"}
+                      </span>
+                    </div>
+                    <div className="goal-meta">
+                      <span>
+                        Progress: {progressPct}%
+                        {completedDisplay ? ` (${completedDisplay})` : ""}
+                      </span>
+                      {targetDisplay && (
+                        <span>
+                          Target: {targetDisplay}
+                          {goal.target_date ? ` (due ${goal.target_date})` : ""}
+                        </span>
+                      )}
+                      {!targetDisplay && goal.target_date && <span>Due: {goal.target_date}</span>}
+                      {targetDisplay && remainingDisplay !== null && remainingValue !== null && remainingValue > 0 && (
+                        <span>
+                          Remaining: {remainingDisplay}
+                        </span>
+                      )}
+                    </div>
+                    <div className="goal-progress">
+                      <div
+                        className="goal-progress-bar"
+                        style={{ width: `${clampedProgress}%` }}
+                      />
+                    </div>
+                    <div className="goal-controls">
+                      <div className="progress-input">
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={draftPercent}
+                          onChange={(e) =>
+                            handleProgressDraftChange(goal.id, e.target.value)
+                          }
+                          placeholder="%"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleProgressApply(goal.id)}
+                        >
+                          Update
+                        </button>
+                      </div>
+                      <div className="goal-buttons">
+                        <button
+                          type="button"
+                          className="complete-btn"
+                          onClick={() => handleGoalComplete(goal.id)}
+                          disabled={goal.status === "completed"}
+                        >
+                          ✓ Complete
+                        </button>
+                        {goal.status !== "archived" && (
+                          <button
+                            type="button"
+                            onClick={() => handleGoalArchive(goal.id)}
+                          >
+                            Archive
+                          </button>
+                        )}
+                        {goal.status === "archived" && (
+                          <button
+                            type="button"
+                            onClick={() => handleGoalActivate(goal.id)}
+                          >
+                            Activate
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={() => handleGoalDelete(goal.id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </aside>
       </main>
     </div>
   );
