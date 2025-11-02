@@ -125,10 +125,41 @@ if __name__ == "__main__":
 
 ---
 
+## Incorporation of Advanced Technologies
+
+Our prototype integrates several advanced technologies across its architecture to demonstrate innovation and technical depth:
+
+- **Frontend Framework – React (with Vite):**  
+  The user interface is built with React for modular, component-based design and Vite for fast builds, hot module replacement, and optimized performance.
+
+- **Backend Framework – Flask:**  
+  The backend uses Flask to manage API endpoints, handle communication with external services, and serve AI and scheduling requests. Flask’s lightweight and extensible design enables seamless integration with cloud deployments and containerization.
+
+- **Cloud Services – Google Cloud:**  
+  Hosted and deployed on Google Cloud for scalability, reliability, and secure environment management, supporting both frontend and backend components.
+
+- **Calendar Integration – Google Calendar API:**  
+  DOLMA connects with the Google Calendar API to fetch, update, and optimize user events in real time through natural-language interaction, enabling AI-driven schedule management.
+
+- **AI Integration – OpenAI API:**  
+  The OpenAI API powers conversational intelligence, generating context-aware responses and personalized suggestions based on user queries and calendar data.
+
+- **External Data – OpenWeatherMap API:**  
+  The system integrates real-time weather information via the OpenWeatherMap API, using geolocation and IP-based detection to provide contextual recommendations.
+
+- **Containerisation – Docker:**  
+  Both the frontend and backend are containerized using Docker and orchestrated with Docker Compose, ensuring consistent environments across development and deployment.
+
+- **Agile Workflow – Jira:**  
+  Development followed iterative sprints managed through Jira, supporting structured backlog tracking, sprint retrospectives, and continuous integration of new features.
+
+Together, these technologies showcase DOLMA’s end-to-end use of **modern web frameworks, cloud infrastructure, AI integration, and agile delivery**, reflecting a robust and innovative engineering approach.
+
+
 ## Project Summary
 
 - Backend: Python (Flask)  
 - Frontend: React with Vite  
-- APIs Used: OpenAI, OpenWeatherMap, ip-api  
+- APIs Used: OpenAI, OpenWeatherMap, Google Calendar API  
 - Containerisation: Docker Compose  
 - Purpose: Demonstrate an AI-powered assistant with live weather integration for ELEC5620 coursework.
