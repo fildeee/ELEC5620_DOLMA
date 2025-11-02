@@ -314,10 +314,14 @@ footer {
 
 .avatar-hat {
   position: absolute;
-  top: -14px;
-  right: -8px;
-  font-size: 1.6rem;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+  top: -28px;
+  left: 10px;
+  width: 78px;
+  height: auto;
+  pointer-events: none;
+  z-index: 5;
+  transform: rotate(-6deg);
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.45));
 }
 
 .avatar-caption {
