@@ -1,111 +1,134 @@
-# ELEC5620\_DOLMA
+# ELEC5620 — DOLMA
 
-DOLMA
-
-### TO RUN BACKEND
-
-create a .env file in backend dir
-
-store the API keys there as:
-
-OPENAI_API_KEY=xxxxx
-OPENWEATHER_API_KEY=your_openweather_api_key
-
-run app.py
-
-Weather and Location
-- The app fetches real-time weather from OpenWeatherMap using browser geolocation when available.
-- If coordinates aren’t provided, the backend attempts an approximate IP-based location (ip-api.com) suitable for demos.
-- For local demos, allow the browser’s location permission prompt on first load.
-
-
-### TO RUN FRONTEND
-
-in a new terminal
-
-cd into frontend
-
-npm i (first time only, or when new dependancies have been added)
-
-npm run dev
-
-click link
-
-### TO RUN WITH DOCKER
-
-#### INITIAL SETUP
-
-add a .env file in frontend containing: VITE_API_BASE=http://localhost:5000
-
-in the backend/.env, add: FRONTEND_URL=http://localhost:5173
-
-download docker
-
-#### EVERYTIME
-
-launch the docker app
-
-from root, run: docker compose up --build
-
-this will launch both frontend and backend
-
-
-
-### ERROR HANDLING GUIDE
-
-If you encounter a **403 (Fetch Forbidden)** error or **dependency-related issues**, follow the steps below to diagnose and resolve them.
+DOLMA is an intelligent personal assistant web application that integrates OpenAI and OpenWeatherMap APIs to provide real-time conversational responses and contextual weather information based on user location.
 
 ---
 
+## Backend Setup
+
+### 1. Create Environment Variables
+Inside the `/backend` directory, create a `.env` file and include your API keys:
+
+```env
+OPENAI_API_KEY=your_openai_api_key
+OPENWEATHER_API_KEY=your_openweather_api_key
+```
+
+### 2. Run the Backend
+Start the backend service by executing:
+
+```bash
+python app.py
+```
+
+### 3. Weather and Location
+- Retrieves real-time weather data from OpenWeatherMap using browser geolocation.
+- If geolocation is unavailable, the backend uses IP-based location via `ip-api.com` for approximate results.
+- For local demos, ensure your browser allows location access when prompted on first load.
+
+---
+
+## Frontend Setup
+
+### 1. Install Dependencies
+Open a new terminal and navigate to the frontend directory:
+
+```bash
+cd frontend
+npm install
+```
+
+### 2. Run the Development Server
+To start the frontend:
+
+```bash
+npm run dev
+```
+
+Click the link shown in the terminal (for example, `http://localhost:5173`) to open the app in your browser.
+
+---
+
+## Run with Docker
+
+### 1. Initial Setup
+Create the following `.env` files:
+
+**Frontend `.env`:**
+```env
+VITE_API_BASE=http://localhost:5000
+```
+
+**Backend `.env`:**
+```env
+FRONTEND_URL=http://localhost:5173
+OPENAI_API_KEY=your_openai_api_key
+OPENWEATHER_API_KEY=your_openweather_api_key
+```
+
+Install Docker Desktop if it is not already installed.
+
+### 2. Launch Containers
+From the project root, run:
+
+```bash
+docker compose up --build
+```
+
+This command will build and run both the frontend and backend containers concurrently.
+
+---
+
+## Error Handling Guide
+
 ### 1. Validate Configuration Files
-Ensure the following configuration files are correct and up to date:
+Ensure the following configuration files exist and are correctly set up:
+- Backend: `.env`, `credentials.json`
+- Frontend: `.env`
 
-- **Backend:** `.env` and `credentials.json`
-- **Frontend:** `.env`
-
-Double-check that:
-- All environment variables are defined and valid  
-- API keys, database URIs, and authentication tokens are correct  
-- The paths in your code reference these files properly  
+Verify that:
+- All API keys and environment variables are valid  
+- File paths are correct  
+- No missing or outdated configuration values exist
 
 ---
 
 ### 2. Fix Dependency Issues
-If you’re encountering missing package or version-related errors, reset your backend environment with the following steps:
+If dependency errors occur, reset your backend environment:
 
 ```bash
-# From the project root
 cd backend
-
-# Create a new virtual environment
-python3 -m venv .venv                            
-
-# Activate the environment
+python3 -m venv .venv
 source .venv/bin/activate
-
-# Install dependencies
 .venv/bin/pip install -r requirements.txt
-
-# Run the backend
 .venv/bin/python app.py
-
 ```
 
-**Note**: You don’t need to configure any Python SDK in your IDE file structure.  
-The virtual environment handles all required dependencies locally.  
+Note: You do not need to configure a Python SDK in your IDE. The virtual environment manages all dependencies locally.
 
-### 3. Resolve Port Conflicts  
-If you encounter a port-related error, ensure that all services are running on the same port (recommended: **5050**).  
+---
 
-Update the following files:  
-- `compose.yml`  
-- `.env` in the **frontend**  
-- `App.py` in the **backend**  
+### 3. Resolve Port Conflicts
+If ports are already in use or mismatched, ensure all services run on the same port (recommended: 5050).
 
-Also make sure the `App.py` includes:  
+Update the following:
+- `compose.yml`
+- `frontend/.env`
+- `backend/app.py`
+
+Ensure the backend includes:
 
 ```python
 if __name__ == "__main__":
     app.run(host="0.0.0.0", debug=True, port=5050)
 ```
 
+---
+
+## Project Summary
+
+- Backend: Python (Flask)  
+- Frontend: React with Vite  
+- APIs Used: OpenAI, OpenWeatherMap, ip-api  
+- Containerisation: Docker Compose  
+- Purpose: Demonstrate an AI-powered assistant with live weather integration for ELEC5620 coursework.
