@@ -1,39 +1,172 @@
 calendar_tools = [
     {
-        "type": "function",
-        "function": {
-            "name": "create_event",
-            "description": "Create a Google Calendar event. Ask user for missing details before calling with confirm=true",
-            "parameters": {
+    "type": "function",
+    "function": {
+        "name": "create_event",
+        "description": "Create one or more Google Calendar events. Ask user for missing details before calling with confirm=true.",
+        "parameters": {
+        "type": "object",
+        "properties": {
+            "events": {
+            "type": "array",
+            "items": {
                 "type": "object",
                 "properties": {
-                    "summary": {"type": "string", "description": "Event title"},
-                    "description": {"type": "string"},
-                    "start_time": {
-                        "type": "string",
-                        "description": "ISO8601 datetime with timezone and year (RFC3339). MUST include year and offset, e.g. 2025-11-22T14:00:00+11:00"
+                "summary": { "type": "string", "description": "Event title" },
+                "description": { "type": "string" },
+                "start_time": {
+                    "type": "string",
+                    "description": "RFC3339 datetime including year and offset, e.g. 2025-11-22T14:00:00+11:00"
+                },
+                "end_time": {
+                    "type": "string",
+                    "description": "RFC3339 datetime including year and offset, e.g. 2025-11-22T16:00:00+11:00"
+                },
+                "location": { "type": "string" },
+                "attendees": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Attendee emails"
+                },
+                "recurrence": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "e.g. ['RRULE:FREQ=WEEKLY;COUNT=5']"
+                },
+                "reminders": {
+                    "type": "array",
+                    "items": {
+                    "type": "object",
+                    "properties": {
+                        "method": { "type": "string" },
+                        "minutes": { "type": "integer" }
                     },
-                    "end_time": {
-                        "type": "string",
-                        "description": "ISO8601 datetime with timezone and year (RFC3339). MUST include year and offset, e.g. 2025-11-22T16:00:00+11:00"
-                    },
-                    "location": {"type": "string"},
-                    "attendees": {"type": "array", "items": {"type": "string"}, "description": "Emails"},
-                    "recurrence": {"type": "array", "items": {"type": "string"}, "description": "e.g. ['RRULE:FREQ=WEEKLY;COUNT=5']"},
-                    "reminders": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {"method": {"type": "string"}, "minutes": {"type": "integer"}},
-                            "required": ["method", "minutes"]
-                        }
-                    },
-                    "confirm": {"type": "boolean", "description": "Call with true only after user explicitly agrees"}
+                    "required": ["method", "minutes"]
+                    }
+                }
                 },
                 "required": ["summary", "start_time", "end_time"]
             }
+            },
+            "confirm": {
+            "type": "boolean",
+            "description": "Call with true only after the user explicitly agrees"
+            }
+        },
+        "required": ["events"]
+        }
+    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_events",
+            "description": "List calendar events in a time window. Supports presets like today/this_week/next_week. Read-only.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "preset": {
+                        "type": "string",
+                        "enum": ["today", "tomorrow", "this_week", "next_week"],
+                        "description": "If set, ignore time_min/time_max and use preset in Australia/Sydney."
+                    },
+                    "time_min": {
+                        "type": "string",
+                        "description": "RFC3339 start (e.g. 2025-11-04T00:00:00+11:00). Used when preset is not provided."
+                    },
+                    "time_max": {
+                        "type": "string",
+                        "description": "RFC3339 end (e.g. 2025-11-04T23:59:59+11:00). Used when preset is not provided."
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Optional cap. Default 50."
+                    }
+                }
+            }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_event",
+            "description": "Delete one or more events matching a title keyword and optional date range or preset. Shows preview first, confirm=true to apply.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Title keyword(s) to match, e.g. 'gym' or 'meeting with John'."
+                    },
+                    "preset": {
+                        "type": "string",
+                        "enum": ["today", "tomorrow", "this_week", "next_week"],
+                        "description": "Optional preset to narrow search window."
+                    },
+                    "time_min": {"type": "string"},
+                    "time_max": {"type": "string"},
+                    "confirm": {"type": "boolean"}
+                },
+                "required": ["query"]
+            }
+        }
+    },
+    
+    {
+        "type": "function",
+        "function": {
+            "name": "update_event",
+            "description": "Update one or more Google Calendar events matching a title or keyword. Use for changing details like title, description, location, or time. Always preview before confirming.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Title or keyword(s) to identify events (e.g. 'meeting', 'gym and study')."
+                    },
+                    "preset": {
+                        "type": "string",
+                        "enum": ["today", "tomorrow", "this_week", "next_week"],
+                        "description": "Optional preset time range to limit search scope."
+                    },
+                    "time_min": {
+                        "type": "string",
+                        "description": "Optional custom range start in RFC3339 (e.g. 2025-11-02T00:00:00+11:00)."
+                    },
+                    "time_max": {
+                        "type": "string",
+                        "description": "Optional custom range end in RFC3339."
+                    },
+                    "summary": {
+                        "type": "string",
+                        "description": "New event title (optional)."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "New event description (optional)."
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "New event location (optional)."
+                    },
+                    "start_time": {
+                        "type": "string",
+                        "description": "New start time in RFC3339 format."
+                    },
+                    "end_time": {
+                        "type": "string",
+                        "description": "New end time in RFC3339 format."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Set to true only after preview and user confirmation."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    },
+
     {
         "type": "function",
         "function": {

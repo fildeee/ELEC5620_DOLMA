@@ -109,6 +109,22 @@ function TipsCard({ tips, place, weather }) {
   );
 }
 
+// renders label/value rows under a message
+function KVList({ items }) {
+  if (!items || !items.length) return null;
+  return (
+    <dl style={{ marginTop: 6, marginBottom: 0 }}>
+      {items.map((it, idx) => (
+        <div key={idx} style={{ display: "flex", gap: 8, marginBottom: 4 }}>
+          <dt style={{ minWidth: 84, color: "#5b6770" }}>{it.label}</dt>
+          <dd style={{ margin: 0, fontWeight: 600 }}>{it.value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+
 export default function Home() {
   const [messages, setMessages] = useState([
     {
@@ -156,10 +172,10 @@ export default function Home() {
     }
     if (typeof window !== "undefined") {
       const { protocol, hostname } = window.location;
-      const defaultPort = protocol === "https:" ? "5001" : "5050";
+      const defaultPort = protocol === "https:" ? "5001" : "5000";
       return `${protocol}//${hostname}:${defaultPort}`;
     }
-    return "http://localhost:5050";
+    return "http://localhost:5000";
   };
 
   const API_BASE = resolveApiBase();
@@ -478,6 +494,7 @@ export default function Home() {
     try {
       const response = await fetch(apiUrl("/api/chat"), {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMsg.text,
@@ -497,33 +514,33 @@ export default function Home() {
         setGoals(data.goals);
       }
 
-      if (data && data.reply && data.reply.trim() !== "") {
-        const assistantMsg = { role: "assistant", text: data.reply };
-        if (data.tips) {
-          assistantMsg.tips = data.tips;
-          assistantMsg.place = data.place_name || null;
-          assistantMsg.weather = data.weather || null;
-        }
+      // builds a single assistant message that prefers structured fields if present
+      const assistantMsg = {
+        role: "assistant",
+        text: data.reply || "",
+        reply_md: data.reply_md || null,
+        items: Array.isArray(data.items) ? data.items : null, // [{label, value}]
+        cta: data.cta || null, // line for confirm/cancel prompt
+        tips: data.tips,
+        place: data.place_name || null,
+        weather: data.weather || null,
+      };
+
+      if (assistantMsg.text || assistantMsg.reply_md || assistantMsg.items || assistantMsg.cta) {
         setMessages((prev) => [...prev, assistantMsg]);
       } else if (data.error) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: `⚠️ ${data.error}` },
-        ]);
+        setMessages((prev) => [...prev, { role: "assistant", text: ` ${data.error}` }]);
       } else {
         setMessages((prev) => [
           ...prev,
-          {
-            role: "assistant",
-            text: "Hmm… something went wrong. Please try again.",
-          },
+          { role: "assistant", text: "Hmm… something went wrong. Please try again." },
         ]);
       }
     } catch (err) {
       console.error("Network or parsing error:", err);
       const message =
         err?.message && err.message !== "Failed to fetch"
-          ? `⚠️ ${err.message}`
+          ? ` ${err.message}`
           : "Network error, please try again.";
       setMessages((prev) => [
         ...prev,
@@ -637,7 +654,35 @@ export default function Home() {
                   msg.role === "user" ? "user" : "assistant"
                 }`}
               >
-                <div className="message-bubble">{msg.text}</div>
+                <div className="message-bubble">
+                  {msg.reply_md ? (
+                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{msg.reply_md}</div>
+                  ) : (
+                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{msg.text}</div>
+                  )}
+
+                  {/* key/value lines */}
+                  <KVList items={msg.items} />
+
+                  {/* confirm/cancel inline controls */}
+                  {msg.cta && (
+                    <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>{msg.cta}</span>
+                      <button
+                        type="button"
+                        onClick={() => setInput("Yes, confirm")}
+                      >
+                        Confirm
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInput("Cancel")}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
+                </div>
                 {msg.tips && (
                   <TipsCard
                     tips={msg.tips}

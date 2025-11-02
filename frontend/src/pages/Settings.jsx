@@ -47,8 +47,8 @@ export default function Settings() {
   const pageRef = useRef(null);
   const redirectRef = useRef(false);
 
-  // 🌐 Use environment-based backend URL
-  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5050";
+  // Use environment-based backend URL
+  const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:5000";
 
   useEffect(() => {
     fetch(`${API_BASE}/api/google/status`, { credentials: "include" })

@@ -4,13 +4,13 @@ from openai import OpenAI
 from dotenv import load_dotenv
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Tuple, Union
 
 try:
     from zoneinfo import ZoneInfo
-except ImportError:  # pragma: no cover - Python <3.9 fallback
-    ZoneInfo = None  # type: ignore
+except ImportError:
+    ZoneInfo = None
 
 import httpx
 from google_auth_oauthlib.flow import Flow
@@ -20,8 +20,12 @@ from google_calendar import (
     is_connected,
     save_creds,
     create_calendar_event,
+    find_events,
+    update_calendar_event,
+    delete_calendar_event,
 )
 from tools import calendar_tools
+
 from goals import (
     create_goal as storage_create_goal,
     delete_goal as storage_delete_goal,
@@ -38,6 +42,7 @@ CORS(app, supports_credentials=True)
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
 
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar"]
 GOOGLE_CLIENT_SECRETS_FILE = "credentials.json"
@@ -57,11 +62,6 @@ def _origin_from_url(url: Optional[str]) -> Optional[str]:
     return url.rstrip("/") if isinstance(url, str) else None
 
 def _cors_origins() -> list[str]:
-    """
-    Build the list of allowed origins for CORS preflight checks.
-    Reads CORS_ALLOW_ORIGINS if provided, otherwise falls back to
-    sensible local dev defaults so that localhost/127.0.0.1 both work.
-    """
     override = os.getenv("CORS_ALLOW_ORIGINS")
     if override:
         origins = []
@@ -81,28 +81,11 @@ def _cors_origins() -> list[str]:
                 defaults.add(base.replace("localhost", "127.0.0.1"))
     return [origin.rstrip("/") for origin in defaults if origin]
 
-app = Flask(__name__)
-ALLOWED_ORIGINS = _cors_origins()
-CORS(
-    app,
-    resources={r"/api/*": {"origins": ALLOWED_ORIGINS}},
-    supports_credentials=True,
-    methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization"],
-)
-
-app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
-
+# function to format current datetime in Sydney timezone
 def _current_sydney_datetime() -> datetime:
-    """
-    Best-effort helper to get the current time in Sydney.
-    Falls back to local time if the zoneinfo database is unavailable.
-    """
     if ZoneInfo:
         try:
             return datetime.now(ZoneInfo("Australia/Sydney"))
@@ -110,12 +93,8 @@ def _current_sydney_datetime() -> datetime:
             pass
     return datetime.now()
 
-
+# function to format decimal numbers
 def _format_decimal(value: Optional[Union[int, float]]) -> Optional[str]:
-    """
-    Format floats/ints without trailing zeros (e.g. 12, 12.5, 12.34).
-    Returns None when value is not numeric.
-    """
     if not isinstance(value, (int, float)):
         return None
     as_float = float(value)
@@ -123,11 +102,8 @@ def _format_decimal(value: Optional[Union[int, float]]) -> Optional[str]:
         return str(int(round(as_float)))
     return f"{as_float:.2f}".rstrip("0").rstrip(".")
 
-
+# function to coerce goal numeric values from various input types
 def _coerce_goal_number(value: Optional[Union[str, int, float]]) -> Optional[float]:
-    """
-    Lightweight numeric parser for goal targets/progress with helpful validation.
-    """
     if value is None:
         return None
     if isinstance(value, (int, float)):
@@ -142,11 +118,8 @@ def _coerce_goal_number(value: Optional[Union[str, int, float]]) -> Optional[flo
             raise ValueError("Goal values must be numeric.") from exc
     raise ValueError("Goal values must be numeric.")
 
-
+# function to compose conversational summary for a single goal inclueing targets and progress
 def _compose_goal_progress(goal: dict) -> str:
-    """
-    Build a conversational summary for a single goal including actual vs target progress.
-    """
     title = goal.get("title") or "Untitled goal"
     progress_pct = goal.get("progress", 0)
     status = (goal.get("status") or "").strip().lower()
@@ -220,6 +193,7 @@ def ip_to_location(ip: str) -> Optional[Tuple[float, float]]:
         pass
     return None
 
+# function to fetch weather data from OpenWeatherMap
 def fetch_weather(lat: float, lon: float) -> Optional[dict]:
     try:
         if OPENWEATHER_API_KEY:
@@ -293,6 +267,39 @@ def build_weather_tips(temp: Optional[float], cond_text: Optional[str], wind: Op
     if not tips:
         tips.append("Looks good: dress to comfort and have a nice day.")
     return " ".join(tips)
+
+
+# formats date for Sydney
+def _fmt_date_only(dt_iso: str) -> str:
+    tz = ZoneInfo("Australia/Sydney")
+    dt = datetime.fromisoformat(dt_iso.replace("Z", "+00:00")).astimezone(tz)
+    return dt.strftime("%A, %d %B %Y")
+
+# format time for Sydney
+def _fmt_time_range(start_iso: str, end_iso: str) -> str:
+    tz = ZoneInfo("Australia/Sydney")
+    s = datetime.fromisoformat(start_iso.replace("Z", "+00:00")).astimezone(tz)
+    e = datetime.fromisoformat(end_iso.replace("Z", "+00:00")).astimezone(tz)
+    # remove leading zero from hour
+    st = s.strftime("%I:%M %p").lstrip("0")
+    et = e.strftime("%I:%M %p").lstrip("0")
+    return f"{st} – {et}"
+
+# converts ISO 8601 string to a short human-readable datetime in Sydney
+def _fmt(dt_iso: str) -> str:
+    tz = ZoneInfo("Australia/Sydney")
+    dt = datetime.fromisoformat(dt_iso.replace("Z", "+00:00")).astimezone(tz)
+    # example: 'Mon, 3 Nov 2:00 PM'
+    return dt.strftime("%a, %-d %b %-I:%M %p")
+
+# converts ISO 8601 string to tz-aware datetime for Google Calendar updates.
+def _to_sydney_datetime(dt_iso: str):
+    tz = ZoneInfo("Australia/Sydney")
+    if isinstance(dt_iso, str) and "T" in dt_iso:
+        return datetime.fromisoformat(dt_iso.replace("Z", "+00:00")).astimezone(tz)
+    return dt_iso  # return as-is if already datetime
+
+
 
 @app.get("/api/google/status")
 def google_status():
@@ -432,6 +439,9 @@ def api_delete_goal(goal_id: str):
         "ok": True,
         "system_message": f"I’ve emailed a quick note—'{goal_title}' has been removed from your list."
     })
+    
+
+
 
 @app.post("/api/chat")
 def chat():
@@ -454,32 +464,35 @@ def chat():
         "You are a schedule-managing assistant designed to help users organize tasks and appointments effectively. "
         "Stay within role: personal assistant only. "
         "Only change the user's calendar upon explicit instructions. "
-        "If a scheduling conflict arises, suggest polite alternatives. "
         "Do not add or remove events without explicit consent; summarize details first and ask for confirmation. "
         "Be proactive about the user's goals: suggest milestones and check-ins. "
         "Use the goal tools to list, create, or update goals, but always provide a clear preview and obtain explicit approval before saving changes. "
         f"It is currently {today_label} in Sydney, Australia—include the year ({current_year}) whenever you mention a date. "
         "When tracking goals, capture the user's target totals (distance, pages, savings, etc.) and progress in real units so you can talk about what is done and what remains. "
-        "You can obtain weather for the user's location and provide schedule suggestions based on conditions. "
-        "If user grants location, use it to personalize recommendations."
+        "You can obtain weather for the user's location and provide schedule suggestios based on conditions. "
+        "If user grants location, use it to personalize recommendations. "
+        "When adding or updating events: You may note real overlaps, but never infer or assume conflicts between back-to-back events. Only flag a conflict if an event’s start_time is strictly earlier than another event’s end_time and its end_time is strictly later than that event’s start_time. Do not propose reschedules or suggest alternatives automatically; just continue with the user’s requested change. "
     )
 
-    messages = [{"role": "system", "content": system_prompt}]
-
     trimmed_history = [m for m in conversation if m.get("role") in ("user", "assistant")][-6:]
-    messages.extend({"role": m["role"], "content": m.get("text", "")} for m in trimmed_history)
 
     lat = lon = None
     if isinstance(user_location, dict):
         try:
             lat = float(user_location.get("lat"))
             lon = float(user_location.get("lon"))
-            messages.append({
-                "role": "system",
-                "content": f"User granted location. Approx coordinates: lat={lat:.5f}, lon={lon:.5f}.",
-            })
         except Exception:
             lat = lon = None
+
+
+    messages = [{"role": "system", "content": system_prompt}]
+    messages.extend({"role": m["role"], "content": m.get("text", "")} for m in trimmed_history)
+
+    if lat is not None and lon is not None:
+        messages.append({
+            "role": "system",
+            "content": f"User granted location. Approx coordinates: lat={lat:.5f}, lon={lon:.5f}.",
+        })
 
     messages.append({"role": "user", "content": user_message})
 
@@ -548,38 +561,358 @@ def chat():
             for call in msg.tool_calls:
                 func_name = call.function.name
                 args = json.loads(call.function.arguments or "{}")
+                
+                # checks Google Calendar connection for calendar-related functions
+                if func_name in {
+                    "find_events",
+                    "create_event",
+                    "update_event",
+                    "delete_event",
+                    "optimize_schedule"
+                } and not is_connected():
+                    return jsonify({
+                                    "reply": "I can’t access your calendar yet. Please connect your Google Calendar using Settings, then ask me again.",
+                                }), 200
 
+                # handle create calendar event
                 if func_name == "create_event":
-                    missing = [k for k in ["summary", "start_time", "end_time"] if not args.get(k)]
-                    if missing:
-                        return jsonify({
-                            "reply": f"I need a bit more info. Could you tell me the {', '.join(missing)}?"
-                        })
-                    if args.get("confirm"):
-                        try:
-                            start_dt = datetime.fromisoformat(args["start_time"].replace("Z", "+00:00"))
-                            end_dt = datetime.fromisoformat(args["end_time"].replace("Z", "+00:00"))
-                            _ = create_calendar_event(
-                                summary=args["summary"],
-                                description=args.get("description", ""),
+                    # read events list, allow single object too
+                    incoming_batch = args.get("events")
+                    if incoming_batch and not isinstance(incoming_batch, list):
+                        incoming_batch = [incoming_batch]
+                    if not incoming_batch and any(args.get(k) for k in ("summary", "start_time", "end_time")):
+                        incoming_batch = [args]
+
+                    # preview step
+                    if not args.get("confirm"):
+                        # basic validation
+                        if not incoming_batch or any(not ev.get(k) for ev in incoming_batch for k in ("summary","start_time","end_time")):
+                            return jsonify({"reply": "i need title, start_time, and end_time for each event."})
+
+                        # build preview lines
+                        lines = []
+                        for i, ev in enumerate(incoming_batch, start=1):
+                            title = ev.get("summary") or "(no title)"
+                            date_str = _fmt_date_only(ev["start_time"])
+                            time_str = _fmt_time_range(ev["start_time"], ev["end_time"])
+                            lines.append(f"{i}. {title} — {date_str}, {time_str}")
+
+                        # stash for the confirm turn
+                        session["pending_creates"] = incoming_batch
+
+                        payload = {
+                            "reply": "please review the event details below.",
+                            "reply_md": "please review the event details below:\n\n" + "\n".join(lines),
+                            "cta": "add this now?",
+                        }
+
+                        # single item also gets structured fields
+                        if len(incoming_batch) == 1:
+                            ev = incoming_batch[0]
+                            payload["items"] = [
+                                {"label": "title", "value": ev.get("summary") or "(no title)"},
+                                {"label": "date",  "value": _fmt_date_only(ev["start_time"])},
+                                {"label": "time",  "value": _fmt_time_range(ev["start_time"], ev["end_time"])},
+                            ]
+
+                        return jsonify(payload)
+
+                    # confirm step
+                    batch = incoming_batch or session.pop("pending_creates", [])
+                    if not batch:
+                        return jsonify({"reply": "there are no pending events to add. please tell me the details again."})
+
+                    try:
+                        added = []
+                        for ev in batch:
+                            start_dt = datetime.fromisoformat(ev["start_time"].replace("Z", "+00:00"))
+                            end_dt = datetime.fromisoformat(ev["end_time"].replace("Z", "+00:00"))
+                            created = create_calendar_event(
+                                summary=ev["summary"],
+                                description=ev.get("description", ""),
                                 start_time=start_dt,
                                 end_time=end_dt,
                             )
-                            return jsonify({
-                                "reply": f"The event '{args['summary']}' has been added to your calendar!"
-                            })
-                        except Exception as e:
-                            return jsonify({"reply": f"Couldn't create the event: {e}"})
-                    preview = (
-                        "Here’s what I’ll add:\n"
-                        f"• {args['summary']}\n"
-                        f"• From: {args['start_time']}\n"
-                        f"• To: {args['end_time']}"
-                    )
-                    return jsonify({
-                        "reply": preview + "\nWould you like me to confirm and add this to your calendar?"
-                    })
+                            # plain quotes, simple line
+                            added.append(f'- "{created.get("summary","(no title)")}”')
 
+                        # clear stash
+                        session.pop("pending_creates", None)
+
+                        success_text = "added:\n" + "\n".join(added)
+                        return jsonify({"reply": success_text, "reply_md": success_text})
+
+                    except Exception as e:
+                        session.pop("pending_creates", None)
+                        err = f"could not create one or more events: {e}"
+                        return jsonify({"reply": err, "reply_md": err}), 500
+
+                # handles finding list of events
+                elif func_name == "find_events":
+                    preset = (args.get("preset") or "").strip().lower()
+                    time_min_s = (args.get("time_min") or "").strip() or None
+                    time_max_s = (args.get("time_max") or "").strip() or None
+                    max_results = args.get("max_results") or 50
+
+                    # compute range in Australia/Sydney
+                    tz = ZoneInfo("Australia/Sydney")
+                    now_local = _current_sydney_datetime().astimezone(tz)
+
+                    if preset:
+                        # day bounds
+                        start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+                        end_local   = now_local.replace(hour=23, minute=59, second=59, microsecond=999000)
+
+                        if preset == "today":
+                            pass  # already today
+                            header = _fmt_date_only(start_local.isoformat())
+                        elif preset == "tomorrow":
+                            start_local = (now_local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                            end_local   = (now_local + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                            header = _fmt_date_only(start_local.isoformat())
+                            header = _fmt_date_only(start_local.isoformat())
+                        elif preset == "this_week":
+                            monday = (now_local - timedelta(days=now_local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+                            sunday = (monday + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                            start_local, end_local = monday, sunday
+                            header = f"{_fmt_date_only(start_local.isoformat())} → {_fmt_date_only(end_local.isoformat())}"
+                        elif preset == "next_week":
+                            monday = (now_local - timedelta(days=now_local.weekday())).replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=7)
+                            sunday = (monday + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                            start_local, end_local = monday, sunday
+                            header = f"{_fmt_date_only(start_local.isoformat())} → {_fmt_date_only(end_local.isoformat())}"
+                        else:
+                            return jsonify({"reply": "Unknown preset. use 'today', 'tomorrow', 'this_week', or 'next_week'."})
+
+                        start_dt, end_dt = start_local, end_local
+                    else:
+                        if not (time_min_s and time_max_s):
+                            return jsonify({"reply": "i need start date and end date or an instructon like 'today'."})
+                        start_dt = datetime.fromisoformat(time_min_s.replace("Z", "+00:00"))
+                        end_dt   = datetime.fromisoformat(time_max_s.replace("Z", "+00:00"))
+                        header = f"{_fmt_date_only(start_dt.isoformat())} → {_fmt_date_only(end_dt.isoformat())}"
+
+                    try:
+                        items = find_events(start_dt, end_dt, max_results=max_results)
+                    except Exception as e:
+                        return jsonify({"reply": f"could not fetch events: {e}"}), 500
+
+                    if not items:
+                        return jsonify({"reply": f"No events for {header}."})
+
+                    lines = []
+                    compact = []
+                    for ev in items:
+                        eid = ev.get("id")
+                        title = ev.get("summary") or "(no title)"
+                        start = (ev.get("start") or {}).get("dateTime") or (ev.get("start") or {}).get("date")
+                        end   = (ev.get("end")   or {}).get("dateTime") or (ev.get("end")   or {}).get("date")
+                        loc   = ev.get("location") or ""
+                        try:
+                            if start and end and "T" in start and "T" in end:
+                                date_str = _fmt_date_only(start)
+                                time_str = _fmt_time_range(start, end)
+                                line = f'• {title} — {date_str}, {time_str}'
+                            else:
+                                date_str = _fmt_date_only(start or end or start_dt.isoformat())
+                                line = f'• {title} — {date_str} (all day)'
+                        except Exception:
+                            line = f'• {title}'
+
+                        lines.append(line)
+                        compact.append({"id": eid, "title": title, "start": start, "end": end, "location": loc})
+
+                    reply_text = f"Events for {header}:\n" + "\n".join(lines)
+                    return jsonify({"reply": reply_text, "reply_md": reply_text, "events": compact})
+                
+                # handles requests to delete events
+                elif func_name == "delete_event":
+                    query = (args.get("query") or "").strip().lower()
+                    if not query:
+                        return jsonify({"reply": "I need the title or keyword for the event(s) you want to delete."})
+
+                    preset = (args.get("preset") or "").strip().lower()
+                    time_min_s = (args.get("time_min") or "").strip() or None
+                    time_max_s = (args.get("time_max") or "").strip() or None
+                    confirm = args.get("confirm", False)
+
+                    tz = ZoneInfo("Australia/Sydney")
+                    now = _current_sydney_datetime().astimezone(tz)
+
+                    # compute range
+                    if preset == "today":
+                        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = now.replace(hour=23, minute=59, second=59, microsecond=999000)
+                    elif preset == "tomorrow":
+                        start_local = (now_local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end_local   = (now_local + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                        header = _fmt_date_only(start_local.isoformat())
+                    elif preset == "this_week":
+                        start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = (start + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                    elif preset == "next_week":
+                        start = (now - timedelta(days=now.weekday()) + timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = (start + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                    elif time_min_s and time_max_s:
+                        start = datetime.fromisoformat(time_min_s.replace("Z", "+00:00"))
+                        end = datetime.fromisoformat(time_max_s.replace("Z", "+00:00"))
+                    else:
+                        start = now - timedelta(days=30)
+                        end = now + timedelta(days=30)
+
+                    try:
+                        items = find_events(start, end, max_results=100)
+                    except Exception as e:
+                        return jsonify({"reply": f"Could not fetch events: {e}"}), 500
+
+                    # find matches by title
+                    query_text = (args.get("query") or "").lower()
+                    query_parts = [q.strip() for q in query_text.replace(" and ", ",").replace("&", ",").split(",") if q.strip()]
+
+                    matches = []
+                    for ev in items:
+                        title = (ev.get("summary") or "").lower()
+                        if any(q in title for q in query_parts):
+                            matches.append(ev)
+
+                    # handle no confirmaton
+                    if not confirm:
+                        lines = []
+                        for i, ev in enumerate(matches[:10], start=1):
+                            title = ev.get("summary") or "(no title)"
+                            s = (ev.get("start") or {}).get("dateTime") or (ev.get("start") or {}).get("date")
+                            e = (ev.get("end") or {}).get("dateTime") or (ev.get("end") or {}).get("date")
+                            try:
+                                if s and e and "T" in s:
+                                    lines.append(f"{i}. {title} — {_fmt_date_only(s)}, {_fmt_time_range(s, e)}")
+                                else:
+                                    lines.append(f"{i}. {title}")
+                            except Exception:
+                                lines.append(f"{i}. {title}")
+
+                        return jsonify({
+                            "reply": f"Found {len(matches)} event(s) matching '{query}'.",
+                            "reply_md": "Found these events:\n\n" + "\n".join(lines) + "\n\nDelete them?",
+                            "cta": "delete now?"
+                        })
+
+                    # handle confirm delete
+                    deleted = 0
+                    for ev in matches:
+                        try:
+                            delete_calendar_event(ev["id"])
+                            deleted += 1
+                        except Exception:
+                            pass
+
+                    if deleted == 0:
+                        return jsonify({"reply": f"Could not delete events matching '{query}'."})
+                    return jsonify({"reply": f"Deleted {deleted} event(s) matching '{query}'."})
+                
+                # handles when prompted to update one or more events
+                elif func_name == "update_event":
+                    query = (args.get("query") or "").strip().lower()
+                    if not query:
+                        return jsonify({"reply": "I need the event title or keyword(s) you want to update."})
+
+                    preset = (args.get("preset") or "").strip().lower()
+                    time_min_s = (args.get("time_min") or "").strip() or None
+                    time_max_s = (args.get("time_max") or "").strip() or None
+                    confirm = args.get("confirm", False)
+
+                    tz = ZoneInfo("Australia/Sydney")
+                    now = _current_sydney_datetime().astimezone(tz)
+
+                    # range for presets
+                    if preset == "today":
+                        start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = now.replace(hour=23, minute=59, second=59, microsecond=999000)
+                    elif preset == "tomorrow":
+                        start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = (now + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                    elif preset == "this_week":
+                        start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = (start + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                    elif preset == "next_week":
+                        start = (now - timedelta(days=now.weekday()) + timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end = (start + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=999000)
+                    elif time_min_s and time_max_s:
+                        start = datetime.fromisoformat(time_min_s.replace("Z", "+00:00"))
+                        end = datetime.fromisoformat(time_max_s.replace("Z", "+00:00"))
+                    else:
+                        start = now - timedelta(days=30)
+                        end = now + timedelta(days=30)
+
+                    try:
+                        events = find_events(start, end, max_results=100)
+                    except Exception as e:
+                        return jsonify({"reply": f"Could not fetch events: {e}"}), 500
+
+                    # match titles
+                    query_parts = [q.strip() for q in query.replace(" and ", ",").replace("&", ",").split(",") if q.strip()]
+                    matches = [ev for ev in events if any(q in (ev.get("summary") or "").lower() for q in query_parts)]
+
+                    if not matches:
+                        return jsonify({"reply": f"No events matching '{query}' found in that range."})
+
+                    # gather updates
+                    updates = {}
+                    for field in ("summary", "description", "location", "start_time", "end_time"):
+                        if args.get(field):
+                            updates[field] = args[field]
+
+                    if not updates:
+                        return jsonify({"reply": "Tell me what you'd like to change — title, description, location, or time."})
+
+                    # preview step
+                    if not confirm:
+                        lines, ids = [], []
+                        for ev in matches[:10]:
+                            ids.append(ev.get("id"))
+                            title = ev.get("summary") or "(no title)"
+                            s = (ev.get("start") or {}).get("dateTime") or (ev.get("start") or {}).get("date")
+                            e = (ev.get("end") or {}).get("dateTime") or (ev.get("end") or {}).get("date")
+                            time_str = _fmt_time_range(s, e) if s and e and "T" in s else ""
+                            lines.append(f"• {title} — {time_str}".strip())
+
+                        update_desc = ", ".join(f"{k} → {_fmt(v) if 'T' in str(v) else v}" for k, v in updates.items())
+
+                        return jsonify({
+                            "reply": f"Found {len(matches)} event(s) matching '{query}'.",
+                            "reply_md": "Found:\n" + "\n".join(lines) +
+                                        f"\n\nProposed updates: {update_desc}\nApply now? (yes/no)",
+                            "event_ids": ids
+                        })
+
+                    # confirm step
+                    ids = args.get("event_ids") or []
+                    updated = 0
+
+                    for ev in matches:
+                        eid = ev.get("id")
+                        if ids and eid not in ids:
+                            continue
+
+                        # ensure proper datetime conversion
+                        updates_clean = {}
+                        for k, v in updates.items():
+                            if k in ("start_time", "end_time"):
+                                updates_clean[k] = _to_sydney_datetime(v)
+                            else:
+                                updates_clean[k] = v
+
+                        try:
+                            update_calendar_event(eid, **updates_clean)
+                            updated += 1
+                        except Exception as e:
+                            print(f"Failed to update event {eid}: {e}")
+
+                    if updated == 0:
+                        return jsonify({"reply": f"Could not update events matching '{query}'."})
+                    return jsonify({"reply": f"Updated {updated} event(s)."})
+
+                
+                # goal handling
                 elif func_name == "create_goal":
                     title = (args.get("title") or "").strip()
                     if not title:
