@@ -156,6 +156,17 @@ Our prototype integrates several advanced technologies across its architecture t
 Together, these technologies showcase DOLMA’s end-to-end use of **modern web frameworks, cloud infrastructure, AI integration, and agile delivery**, reflecting a robust and innovative engineering approach.
 
 
+## Contribution Table
+
+| **Name**     | **Allocated Tasks** |
+|---------------|----------------------|
+| **Oydan**     | • Attended meetings  <br>• Connected Google Calendar API  <br>• Added create/update events functionality  <br>• Added list events functionality  <br>• Added delete events functionality  <br>• Implemented event conflict detection |
+| **Masroor**   | • Attended meetings  <br>• Set up initial project using Vite (React + Flask)  <br>• Helped create frontend for pages  <br>• Connected OpenAI API  <br>• Incorporated Docker  <br>• Connected to Google Cloud |
+| **Zheng**     | • Attended meetings  <br>• Integrated Weather API for real-time data retrieval  <br>• Integrated Geolocation API to obtain user location  <br>• Enabled weather-based activity recommendations  <br>• Enabled location-based activity recommendations |
+| **Divaskar**  | • Attended meetings  <br>• Integrated goal management (adding and completing goals)  <br>• Helped create app skeleton (including frontend design) |
+| **Alaukika**  | • Attended meetings  <br>• Integrated avatar customization  <br>• Helped create app skeleton (including frontend design) |
+
+
 ## Project Summary
 
 - Backend: Python (Flask)  
