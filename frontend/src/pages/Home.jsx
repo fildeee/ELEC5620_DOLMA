@@ -47,11 +47,7 @@ const readStoredHat = () => {
 };
 
 
-const readStoredHat = () => {
-  if (typeof window === "undefined") return "classic";
-  const raw = localStorage.getItem(HAT_STORAGE_KEY);
-  return HAT_VARIANTS[raw] ? raw : "classic";
-};
+
 
 function TipsCard({ tips, place, weather }) {
   const card = {
@@ -271,32 +267,43 @@ export default function Home() {
   }, [isEntering]);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
-      return undefined;
+  if (typeof window === "undefined") return;
+
+  const syncHat = () => setHat(readStoredHat());
+
+  const handleStorage = (event) => {
+    if (event.key !== HAT_STORAGE_KEY) return;
+    const incoming = event.newValue;
+
+    if (incoming && HAT_VARIANTS[incoming]) {
+      setHat(incoming);
+    } else if (incoming && LEGACY_HAT_MAP[incoming]) {
+      setHat(LEGACY_HAT_MAP[incoming]);
+    } else {
+      setHat("hat_classic");
     }
-    const syncHat = () => setHat(readStoredHat());
-    const handleStorage = (event) => {
-      if (event.key === HAT_STORAGE_KEY) {
-        const incoming = event.newValue;
-        setHat(HAT_VARIANTS[incoming] ? incoming : "classic");
-      }
-    };
-    const handleCustom = (event) => {
-      const incoming = event?.detail?.hat;
-      if (incoming && HAT_VARIANTS[incoming]) {
-        setHat(incoming);
-      } else {
-        syncHat();
-      }
-    };
-    window.addEventListener("storage", handleStorage);
-    window.addEventListener("dolma-hat-change", handleCustom);
-    syncHat();
-    return () => {
-      window.removeEventListener("storage", handleStorage);
-      window.removeEventListener("dolma-hat-change", handleCustom);
-    };
-  }, []);
+  };
+
+  const handleCustom = (event) => {
+    const incoming = event?.detail?.hat;
+    if (incoming && HAT_VARIANTS[incoming]) {
+      setHat(incoming);
+    } else if (incoming && LEGACY_HAT_MAP[incoming]) {
+      setHat(LEGACY_HAT_MAP[incoming]);
+    } else {
+      syncHat();
+    }
+  };
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener("dolma-hat-change", handleCustom);
+  syncHat();
+
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener("dolma-hat-change", handleCustom);
+  };
+}, []);
 
   useEffect(() => {
     setProgressDrafts((prev) => {
@@ -644,9 +651,11 @@ export default function Home() {
         <div className="sidebar-header">
           <h2 className="sidebar-logo">DOLMA</h2>
           <div className="dolma-avatar">
-            <div className="avatar-frame">
+           <div className="avatar-frame">
               <img src={dolmaFace} alt="Dolma avatar" />
-              {hatMeta?.emoji && <span className="avatar-hat">{hatMeta.emoji}</span>}
+              {hatMeta?.src && (
+                <img src={hatMeta.src} alt="Dolma hat" className="avatar-hat" />
+              )}
             </div>
             <p className="avatar-caption">{hatMeta?.title || "Your AI Assistant"}</p>
           </div>
