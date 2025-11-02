@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import dolmaFace from "../assets/dolma_face.png";
+import hat_classic from "../assets/hat_classic.png";
+import hat_scholar from "../assets/hat_scholar.png";
+import hat_strategist from "../assets/hat_strategist.png";
 
 const CATEGORY_UNITS = {
   fitness: "KM",
@@ -12,19 +15,37 @@ const CATEGORY_UNITS = {
 
 const HAT_STORAGE_KEY = "dolmaHat";
 const HAT_VARIANTS = {
-  classic: {
-    emoji: "🎩",
+  hat_classic: {
+    src: hat_classic,
     title: "Classic Counsel",
   },
-  strategist: {
-    emoji: "🧭",
-    title: "Strategist",
-  },
-  scholar: {
-    emoji: "📚",
+  hat_scholar: {
+    src: hat_scholar,
     title: "Scholar",
   },
+  hat_strategist: {
+    src: hat_strategist,
+    title: "Strategist",
+  },
 };
+
+const LEGACY_HAT_MAP = {
+  classic: "hat_classic",
+  scholar: "hat_scholar",
+  strategist: "hat_strategist",
+};
+
+const readStoredHat = () => {
+  if (typeof window === "undefined") return "hat_classic";
+  const raw = localStorage.getItem(HAT_STORAGE_KEY);
+
+  if (raw && HAT_VARIANTS[raw]) return raw;
+
+  if (raw && LEGACY_HAT_MAP[raw]) return LEGACY_HAT_MAP[raw];
+
+  return "hat_classic";
+};
+
 
 const readStoredHat = () => {
   if (typeof window === "undefined") return "classic";
