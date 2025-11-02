@@ -221,7 +221,7 @@ export default function Home() {
     }
     return `${numText} ${unitSymbol}`;
   };
-  const hatMeta = HAT_VARIANTS[hat] || HAT_VARIANTS.classic;
+  const hatMeta = HAT_VARIANTS[hat] || HAT_VARIANTS.hat_classic;
 
   const fetchGoals = useCallback(async () => {
     try {

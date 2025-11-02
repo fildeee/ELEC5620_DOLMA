@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
-import hat_classic from "../assets/hat_classic.png";
-import hat_scholar from "../assets/hat_scholar.png";
-import hat_strategist from "../assets/hat_strategist.png";
+import hat_classic from "./assets/hat_classic.png";
+import hat_scholar from "./assets/hat_scholar.png";
+import hat_strategist from "./assets/hat_strategist.png";
 
 const DolmaAvatarContext = createContext(null);
 
