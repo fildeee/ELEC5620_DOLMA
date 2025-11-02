@@ -124,6 +124,9 @@ function KVList({ items }) {
   );
 }
 
+// removes md formatting from text
+const stripMD = (s) => (s ?? "").replace(/\*\*/g, "").trim();
+
 
 export default function Home() {
   const [messages, setMessages] = useState([
@@ -655,11 +658,9 @@ export default function Home() {
                 }`}
               >
                 <div className="message-bubble">
-                  {msg.reply_md ? (
-                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{msg.reply_md}</div>
-                  ) : (
-                    <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>{msg.text}</div>
-                  )}
+                  <div style={{ whiteSpace: "pre-wrap", lineHeight: 1.4 }}>
+                    {stripMD(msg.reply_md ?? msg.text)}
+                  </div>
 
                   {/* key/value lines */}
                   <KVList items={msg.items} />
@@ -668,18 +669,6 @@ export default function Home() {
                   {msg.cta && (
                     <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 8 }}>
                       <span>{msg.cta}</span>
-                      <button
-                        type="button"
-                        onClick={() => setInput("Yes, confirm")}
-                      >
-                        Confirm
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setInput("Cancel")}
-                      >
-                        Cancel
-                      </button>
                     </div>
                   )}
                 </div>

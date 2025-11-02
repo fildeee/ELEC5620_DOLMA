@@ -744,9 +744,8 @@ def chat():
                         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
                         end = now.replace(hour=23, minute=59, second=59, microsecond=999000)
                     elif preset == "tomorrow":
-                        start_local = (now_local + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
-                        end_local   = (now_local + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999000)
-                        header = _fmt_date_only(start_local.isoformat())
+                        start = (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+                        end   = (now + timedelta(days=1)).replace(hour=23, minute=59, second=59, microsecond=999000)
                     elif preset == "this_week":
                         start = (now - timedelta(days=now.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
                         end = (start + timedelta(days=6)).replace(hour=23, minute=59, second=59, microsecond=999000)
