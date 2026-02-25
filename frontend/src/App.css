@@ -10,7 +10,7 @@ body,
 #root {
   height: 100vh;
   width: 100vw;
-  overflow: hidden;
+  overflow: auto;
   background-color: #0c0c0c;
   display: flex;
   flex-direction: column;
@@ -250,7 +250,7 @@ footer {
   background-color: #0c0c0c;
   color: #f1f1f1;
   font-family: "Inter", "Segoe UI", sans-serif;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .dolma-layout.entering {
@@ -849,6 +849,9 @@ footer {
 @media (max-width: 768px) {
   .dolma-layout {
     flex-direction: column;
+    height: auto;
+    min-height: 100vh;
+    overflow-y: auto;
   }
 
   .dolma-sidebar {
@@ -865,10 +868,12 @@ footer {
     flex-direction: column;
     padding: 1rem;
     height: auto;
+    overflow: visible;
   }
 
   .chat-pane {
     width: 100%;
+    overflow: visible;
   }
 
   .system-tip {
@@ -880,6 +885,7 @@ footer {
     width: 100%;
     max-height: none;
     margin-bottom: 1rem;
+    overflow: visible;
   }
 
   .chat-messages {

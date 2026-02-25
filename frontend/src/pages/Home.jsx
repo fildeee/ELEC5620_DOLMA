@@ -669,7 +669,7 @@ export default function Home() {
             className="sidebar-btn"
             onClick={() => {
               alert("Logged out!");
-              navigate("/signin");
+              navigate("/signin", { replace: true });
             }}
           >
             Logout
