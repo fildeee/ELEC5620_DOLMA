@@ -4,6 +4,22 @@ DOLMA is an intelligent personal assistant web application that integrates OpenA
 
 ---
 
+## Team
+
+DOLMA was built by a five-person group for ELEC5620 at the University of Sydney.
+The original repository is [fildeee/ELEC5620_DOLMA](https://github.com/fildeee/ELEC5620_DOLMA);
+the commit history in this repository preserves each contributor's work.
+
+| Contributor | Main areas |
+|---|---|
+| Masroor Muntasir ([@fildeee](https://github.com/fildeee)) | OpenAI integration, assistant prompting and tool definitions, Docker setup |
+| Oydan ([@OydanK](https://github.com/OydanK)) | Google Calendar integration — creating, finding, updating and deleting events |
+| Alaukika Vardhan ([@Kia1902](https://github.com/Kia1902)) | Avatar/hat system and the shared avatar context |
+| Divaskar ([@Divaskar068](https://github.com/Divaskar068)) | Goal tracking feature and frontend UI work |
+| Zheng Gong | Weather and location API, timezone handling |
+
+---
+
 ## Backend Setup
 
 ### 1. Create Environment Variables
@@ -20,6 +36,10 @@ Start the backend service by executing:
 ```bash
 python app.py
 ```
+
+This serves on `http://localhost:5000` by default; set `PORT` in `backend/.env` to
+change it. The Google Cloud console must authorise a matching redirect URI —
+`http://localhost:5000/api/google/oauth2callback` for the default port.
 
 ### 3. Weather and Location
 - Retrieves real-time weather data from OpenWeatherMap using browser geolocation.
@@ -54,17 +74,19 @@ Click the link shown in the terminal (for example, `http://localhost:5173`) to o
 ### 1. Initial Setup
 Create the following `.env` files:
 
-**Frontend `.env`:**
-```env
-VITE_API_BASE=http://localhost:5000
-```
-
 **Backend `.env`:**
 ```env
-FRONTEND_URL=http://localhost:5173
 OPENAI_API_KEY=your_openai_api_key
 OPENWEATHER_API_KEY=your_openweather_api_key
 ```
+
+You do **not** need a frontend `.env` for Docker: `docker-compose.yml` already sets
+`VITE_API_BASE=http://localhost:5050`, along with the backend's `PORT`,
+`PUBLIC_PORT`, and `FRONTEND_URL`.
+
+Under Docker the backend listens on port 5000 inside the container but is published
+on host port **5050**, so the authorised redirect URI to register in the Google Cloud
+console is `http://localhost:5050/api/google/oauth2callback`.
 
 Install Docker Desktop if it is not already installed.
 
@@ -109,19 +131,21 @@ Note: You do not need to configure a Python SDK in your IDE. The virtual environ
 ---
 
 ### 3. Resolve Port Conflicts
-If ports are already in use or mismatched, ensure all services run on the same port (recommended: 5050).
+The backend port is configuration, not code — never edit `app.py` to change it.
 
-Update the following:
-- `compose.yml`
-- `frontend/.env`
-- `backend/app.py`
+| Variable | Default | Meaning |
+|---|---|---|
+| `PORT` | `5000` | Port the backend listens on |
+| `PUBLIC_PORT` | same as `PORT` | Port the **browser** reaches the backend on (differs when a port mapping is in play, as with Docker) |
+| `GOOGLE_REDIRECT_URI` | `http://localhost:$PUBLIC_PORT/api/google/oauth2callback` | Overrides the OAuth callback outright |
+| `FRONTEND_URL` | `http://localhost:5173` | Added to the CORS allow-list |
 
-Ensure the backend includes:
+To move the backend to 5050, set `PORT=5050` in `backend/.env` and
+`VITE_API_BASE=http://localhost:5050` in `frontend/.env`, then register
+`http://localhost:5050/api/google/oauth2callback` in the Google Cloud console.
 
-```python
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", debug=True, port=5050)
-```
+Whatever you choose, these three must agree: `VITE_API_BASE`, the port the backend
+listens on, and the redirect URI authorised in Google Cloud.
 
 ---
 

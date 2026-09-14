@@ -16,6 +16,7 @@ import httpx
 from google_auth_oauthlib.flow import Flow
 
 from google_calendar import (
+    TOKEN_PATH,
     get_calendar_service,
     is_connected,
     save_creds,
@@ -37,16 +38,29 @@ from goals import (
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app, supports_credentials=True)
 
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Port the browser reaches this backend on. Keep it in sync with the frontend's
+# VITE_API_BASE; when running behind a port mapping (Docker), PUBLIC_PORT is the
+# host-side port while PORT is the one we actually listen on.
+PORT = int(os.getenv("PORT", "5000"))
+PUBLIC_PORT = os.getenv("PUBLIC_PORT", str(PORT))
 
 GOOGLE_SCOPES = ["https://www.googleapis.com/auth/calendar"]
-GOOGLE_CLIENT_SECRETS_FILE = "credentials.json"
-REDIRECT_URI = "http://localhost:5000/api/google/oauth2callback"
+GOOGLE_CLIENT_SECRETS_FILE = os.getenv(
+    "GOOGLE_CLIENT_SECRETS_FILE", os.path.join(BASE_DIR, "credentials.json")
+)
+# Must match an authorised redirect URI in the Google Cloud console, and must be
+# reachable from the browser (not just from inside the container).
+REDIRECT_URI = os.getenv(
+    "GOOGLE_REDIRECT_URI",
+    f"http://localhost:{PUBLIC_PORT}/api/google/oauth2callback",
+)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 def _origin_from_url(url: Optional[str]) -> Optional[str]:
@@ -81,6 +95,10 @@ def _cors_origins() -> list[str]:
                 defaults.add(base.replace("localhost", "127.0.0.1"))
     return [origin.rstrip("/") for origin in defaults if origin]
 
+
+# Credentialed CORS must name its origins: with the default "*" flask-cors
+# reflects whatever Origin is sent, which lets any site call us with cookies.
+CORS(app, origins=_cors_origins(), supports_credentials=True)
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY")
 
@@ -290,7 +308,13 @@ def _fmt(dt_iso: str) -> str:
     tz = ZoneInfo("Australia/Sydney")
     dt = datetime.fromisoformat(dt_iso.replace("Z", "+00:00")).astimezone(tz)
     # example: 'Mon, 3 Nov 2:00 PM'
-    return dt.strftime("%a, %-d %b %-I:%M %p")
+    # Built by hand because the no-pad flags (%-d/%-I) are glibc-only and raise
+    # ValueError on Windows.
+    hour12 = dt.hour % 12 or 12
+    return (
+        f"{dt.strftime('%a')}, {dt.day} {dt.strftime('%b')} "
+        f"{hour12}:{dt.strftime('%M %p')}"
+    )
 
 # converts ISO 8601 string to tz-aware datetime for Google Calendar updates.
 def _to_sydney_datetime(dt_iso: str):
@@ -339,12 +363,8 @@ def google_oauth2callback():
 @app.post("/api/google/disconnect")
 def google_disconnect():
     try:
-        for candidate in ("token.json", "backend/token.json"):
-            try:
-                if os.path.exists(candidate):
-                    os.remove(candidate)
-            except Exception:
-                pass
+        if os.path.exists(TOKEN_PATH):
+            os.remove(TOKEN_PATH)
         return jsonify({"ok": True})
     except Exception as e:
         return jsonify({"ok": False, "error": str(e)}), 500
@@ -553,7 +573,7 @@ def chat():
             messages=messages,
             tools=calendar_tools,
             tool_choice="auto",
-            max_completion_tokens=250,
+            max_completion_tokens=800,
         )
         msg = response.choices[0].message
 
@@ -773,6 +793,11 @@ def chat():
                         title = (ev.get("summary") or "").lower()
                         if any(q in title for q in query_parts):
                             matches.append(ev)
+
+                    if not matches:
+                        return jsonify({
+                            "reply": f"I couldn't find any events matching '{query}' in that range."
+                        })
 
                     # handle no confirmaton
                     if not confirm:
@@ -1130,7 +1155,7 @@ def chat():
             regen = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages + [{"role": "user", "content": "Please elaborate."}],
-                max_completion_tokens=250,
+                max_completion_tokens=800,
             )
             reply = (regen.choices[0].message.content or "").strip()
 
@@ -1148,4 +1173,4 @@ def health():
     return jsonify({"ok": True})
 
 if __name__ == "__main__":
-     app.run(host="0.0.0.0", debug=True, port=5050)
+    app.run(host="0.0.0.0", debug=True, port=PORT)
