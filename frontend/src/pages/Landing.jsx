@@ -23,13 +23,12 @@ export default function Landing() {
       <main className="hero">
         <h2 className="tagline">Intelligent Personal Assistant</h2>
         <h1 className="headline">
-          Manage your <span className="highlight">events</span>,{" "}
-          <span className="highlight">goals</span>, and{" "}
+          Manage your <span className="highlight">schedule</span> and{" "}
           <span className="highlight">life</span> smarter.
         </h1>
         <p className="subtext">
-          Dolma helps you stay organised with AI-powered scheduling, goal
-          tracking, and personalised suggestions — all in one place.
+          Dolma helps you stay organised with AI-powered scheduling, weather-aware
+          planning, and personalised suggestions — all in one place.
         </p>
 
         <div className="cta">
