@@ -180,6 +180,37 @@ agent_tools = [
     {
         "type": "function",
         "function": {
+            "name": "find_places",
+            "description": "Find real places near the user, from OpenStreetMap. Use this whenever the user asks what is nearby or wants somewhere to go \u2014 a bar, a cafe, a gym. Never name a venue that this tool did not return. Read-only.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "category": {
+                        "type": "string",
+                        "enum": ["bank", "bar", "cafe", "gym", "hospital", "library", "nightclub", "park", "pharmacy", "restaurant", "supermarket"],
+                        "description": "The closest category to what the user asked for. 'bar' also covers pubs, 'restaurant' also covers takeaway."
+                    },
+                    "keyword": {
+                        "type": "string",
+                        "description": "Optional. Only return places whose name contains this text."
+                    },
+                    "radius_m": {
+                        "type": "integer",
+                        "description": "Search radius in metres. Default 1500, maximum 5000."
+                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "How many places to return. Default 8, maximum 20."
+                    }
+                },
+                "required": ["category"]
+            }
+        }
+    },
+
+    {
+        "type": "function",
+        "function": {
             "name": "get_weather",
             "description": "Get the current weather for the user's location, with clothing and outdoor-activity tips. Call this whenever the weather is relevant \u2014 the user asks about it, or you need it to advise on an outdoor event. Uses the browser location the user granted, falling back to an IP estimate. Read-only.",
             "parameters": {

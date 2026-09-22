@@ -70,11 +70,27 @@ never sees and therefore cannot garble.
 | `create_event` | write | Google Calendar API |
 | `update_event` | write | Google Calendar API |
 | `delete_event` | write | Google Calendar API |
+| `find_places` | read | OpenStreetMap (Overpass API) |
 | `get_weather` | read | OpenWeatherMap, falling back to Open-Meteo |
 
 The model decides when to call these. Nothing in the request path matches on
 keywords — *"is it a good day to cycle to campus?"* reaches `get_weather` exactly as
 *"what's the weather?"* does.
+
+### Saying "I don't know"
+
+An agent with tools will reach for one even when none of them fits, and will fill a
+gap from memory when asked something it cannot look up. Asked to recommend a nearby
+bar before `find_places` existed, DOLMA once answered with five venues and their
+street addresses — none of which came from a tool. Two rules in the system prompt
+close that off: anything specific (a venue, an address, opening hours, a price) must
+come from an observation in the current conversation, and a request no tool covers
+gets a plain sentence saying so rather than a speculative tool call.
+
+`find_places` reports OpenStreetMap's fields as they are, including the gaps. A venue
+with no recorded address comes back with `address: null`, and the observation says a
+null means the detail is not recorded, so it is reported as unlisted rather than
+quietly supplied.
 
 ### Preview, then confirm
 
@@ -107,6 +123,7 @@ outright if the model API itself is unreachable.
 | `tool_handlers.py` | one handler per tool, returning observations rather than HTTP responses |
 | `tools.py` | the tool schemas advertised to the model |
 | `google_calendar.py` | Google Calendar API calls and OAuth credentials |
+| `places.py` | OpenStreetMap lookups for nearby venues |
 | `weather.py` | OpenWeatherMap / Open-Meteo lookups and IP geolocation |
 | `formatting.py` | Sydney-local date and time formatting shared by both layers |
 | `tests/` | the suite described under [Backend Setup](#3-run-the-tests) |
@@ -115,7 +132,7 @@ outright if the model API itself is unreachable.
 ### Response shape
 
 `/api/chat` returns the model's `reply`, whatever the tools produced for the
-interface (`events`, `items`, `cta`, `tips`, `place_name`, `weather`), and a `trace`
+interface (`events`, `places`, `items`, `cta`, `tips`, `place_name`, `weather`), and a `trace`
 of the reason–act–observe steps taken. The trace records each step's reasoning, the
 tool called, its arguments and its observation, which makes the agent's decisions
 inspectable during a demonstration.
@@ -362,8 +379,8 @@ Our prototype integrates several advanced technologies across its architecture t
 - **AI Integration – OpenAI API function calling:**  
   Tools are advertised to the model as JSON schemas and selected by the model itself; the backend executes them and reports the outcome. Write operations pass through a preview-and-confirm protocol enforced in code, so the assistant can never change a user's calendar without explicit approval.
 
-- **External Data – OpenWeatherMap API:**  
-  The system integrates real-time weather information via the OpenWeatherMap API, using geolocation and IP-based detection to provide contextual recommendations.
+- **External Data – OpenWeatherMap and OpenStreetMap:**  
+  Real-time weather comes from the OpenWeatherMap API, falling back to Open-Meteo, and nearby venues from OpenStreetMap through the Overpass API; both use browser geolocation with IP-based detection as a fallback. Grounding recommendations in a live lookup is also what keeps the assistant from inventing them: it can only name a place a query returned.
 
 - **Dependency Management – uv:**  
   Python dependencies are declared in `pyproject.toml` and pinned in a committed `uv.lock`, so every developer and the Docker image resolve to byte-identical versions of the whole transitive graph. uv also provisions the interpreter itself, removing "works on my machine" differences in Python version, and separates development-only tooling from what ships in the runtime image.

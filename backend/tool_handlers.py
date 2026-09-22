@@ -33,6 +33,7 @@ from google_calendar import (
     is_connected,
     update_calendar_event,
 )
+from places import CATEGORY_TAGS, find_nearby
 from weather import current_conditions, ip_to_location
 
 # Tools that are useless without an authorised Google account.
@@ -109,22 +110,33 @@ def _match_titles(events: List[dict], query: str) -> List[dict]:
 # weather
 # --------------------------------------------------------------------------- #
 
+def _resolve_location(ctx: ToolContext):
+    """The granted browser position, falling back to a rough IP estimate."""
+    if ctx.lat is not None and ctx.lon is not None:
+        return ctx.lat, ctx.lon
+    if ctx.client_ip:
+        approx = ip_to_location(ctx.client_ip)
+        if approx:
+            return approx
+    return None, None
+
+
+def _location_unavailable() -> ToolResult:
+    return ToolResult(
+        observation={
+            "status": "location_unavailable",
+            "message": "No location available: the browser did not grant geolocation "
+            "and the IP lookup failed.",
+            "instruction": "Ask the user to enable location access, or to tell you their city. "
+            "Do not guess where they are.",
+        }
+    )
+
+
 def handle_get_weather(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
-    lat, lon = ctx.lat, ctx.lon
+    lat, lon = _resolve_location(ctx)
     if lat is None or lon is None:
-        if ctx.client_ip:
-            approx = ip_to_location(ctx.client_ip)
-            if approx:
-                lat, lon = approx
-    if lat is None or lon is None:
-        return ToolResult(
-            observation={
-                "status": "location_unavailable",
-                "message": "No location available: the browser did not grant geolocation "
-                "and the IP lookup failed.",
-                "instruction": "Ask the user to enable location access, or to tell you their city.",
-            }
-        )
+        return _location_unavailable()
 
     conditions = current_conditions(lat, lon)
     if not conditions:
@@ -153,6 +165,56 @@ def handle_get_weather(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
                 "cond": conditions["cond"],
             },
         },
+    )
+
+
+def handle_find_places(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
+    lat, lon = _resolve_location(ctx)
+    if lat is None or lon is None:
+        return _location_unavailable()
+
+    category = (args.get("category") or "").strip().lower()
+    try:
+        places = find_nearby(
+            category,
+            lat,
+            lon,
+            radius_m=args.get("radius_m"),
+            limit=args.get("limit"),
+            keyword=(args.get("keyword") or "").strip() or None,
+        )
+    except ValueError as exc:
+        return _needs(str(exc), available_categories=sorted(CATEGORY_TAGS))
+    except RuntimeError as exc:
+        return ToolResult(observation={"error": str(exc)})
+
+    if not places:
+        return ToolResult(
+            observation={
+                "status": "no_results",
+                "category": category,
+                "message": f"No {category} found within {args.get('radius_m') or 1500} m.",
+                "instruction": "Offer to search a wider radius rather than naming places "
+                "from your own knowledge.",
+            }
+        )
+
+    return ToolResult(
+        observation={
+            "category": category,
+            "count": len(places),
+            "places": places,
+            "source": "OpenStreetMap",
+            "instruction": "Report only these places — naming one this list does not "
+            "contain would be an invention. A null address, opening_hours or website means "
+            "OpenStreetMap does not record it — say it is not listed rather than supplying "
+            "one. Every name, distance, address and opening time is already displayed to "
+            "the user in a card below your message, so your reply must name at most TWO of "
+            "these places — the nearest, or whichever best fits what they asked — in one or "
+            "two sentences, then tell them the rest are in the list below. Writing them all "
+            "out only duplicates the card. Do not use markdown links.",
+        },
+        ui={"places": places, "places_category": category},
     )
 
 
@@ -415,6 +477,7 @@ def handle_update_event(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
 
 HANDLERS = {
     "get_weather": handle_get_weather,
+    "find_places": handle_find_places,
     "find_events": handle_find_events,
     "create_event": handle_create_event,
     "update_event": handle_update_event,

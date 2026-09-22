@@ -118,6 +118,106 @@ function TipsCard({ tips, place, weather }) {
   );
 }
 
+// renders the places a find_places lookup returned, mirroring TipsCard
+function PlacesCard({ places, category }) {
+  if (!Array.isArray(places) || places.length === 0) return null;
+
+  const card = {
+    marginTop: "10px",
+    background: "linear-gradient(180deg, #f8fbff 0%, #f1f6ff 100%)",
+    border: "1px solid #d6e4ff",
+    borderRadius: "10px",
+    padding: "12px 14px",
+    maxWidth: "640px",
+    color: "#1f2d3d",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+  };
+  const header = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  };
+  const title = { fontWeight: 700, fontSize: 14 };
+  const source = { fontSize: 12, color: "#4a5660" };
+  const row = {
+    background: "#ffffff",
+    border: "1px solid #e8eefc",
+    borderRadius: 8,
+    padding: "8px 10px",
+    marginBottom: 6,
+  };
+  const nameLine = {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 10,
+  };
+  const name = { fontWeight: 600, fontSize: 13, color: "#25313b" };
+  const distance = { fontSize: 12, color: "#0084ff", whiteSpace: "nowrap" };
+  const detail = { fontSize: 12, color: "#4a5660", marginTop: 3 };
+  // OpenStreetMap opening hours run long ("Mo-We 12:00-00:00; Th ..."), so keep
+  // them to one line and put the full string in the tooltip.
+  const oneLine = {
+    ...detail,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+  const unlisted = { ...detail, fontStyle: "italic", color: "#8a949c" };
+
+  const formatDistance = (metres) => {
+    if (typeof metres !== "number") return null;
+    return metres < 1000 ? `${metres} m` : `${(metres / 1000).toFixed(1)} km`;
+  };
+
+  return (
+    <div className="places-card" style={card}>
+      <div style={header}>
+        <div style={title}>
+          Nearby{category ? ` \u00b7 ${category}` : ""}
+        </div>
+        <div style={source}>{places.length} from OpenStreetMap</div>
+      </div>
+
+      {places.map((place, idx) => (
+        <div key={`${place.name}-${idx}`} style={row}>
+          <div style={nameLine}>
+            <span style={name}>{place.name}</span>
+            <span style={distance}>{formatDistance(place.distance_m)}</span>
+          </div>
+
+          {/* shown either way: a blank line would read as "no address needed" */}
+          {place.address ? (
+            <div style={detail}>{place.address}</div>
+          ) : (
+            <div style={unlisted}>Address not listed</div>
+          )}
+
+          {place.opening_hours && (
+            <div style={oneLine} title={place.opening_hours}>
+              {place.opening_hours}
+            </div>
+          )}
+
+          {place.website && (
+            <div style={detail}>
+              <a
+                href={place.website}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: "#0084ff" }}
+              >
+                Website
+              </a>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // renders label/value rows under a message
 function KVList({ items }) {
   if (!items || !items.length) return null;
@@ -280,6 +380,8 @@ export default function Home() {
         tips: data.tips,
         place: data.place_name || null,
         weather: data.weather || null,
+        places: Array.isArray(data.places) ? data.places : null,
+        placesCategory: data.places_category || null,
       };
 
       if (assistantMsg.text || assistantMsg.reply_md || assistantMsg.items || assistantMsg.cta) {
@@ -433,6 +535,9 @@ export default function Home() {
                     place={msg.place}
                     weather={msg.weather}
                   />
+                )}
+                {msg.places && (
+                  <PlacesCard places={msg.places} category={msg.placesCategory} />
                 )}
               </div>
             ))}

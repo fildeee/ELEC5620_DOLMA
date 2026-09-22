@@ -158,6 +158,38 @@ def stubbed_google(events=None, connected=True):
             setattr(tool_handlers, name, fn)
 
 
+# Two named venues at known distances, one with an address recorded in OSM and one
+# without, so tests can check that a missing field is reported rather than invented.
+SAMPLE_PLACES = [
+    {"name": "Amber Bar", "kind": "bar", "distance_m": 88,
+     "address": "122 Pitt Street, Sydney", "opening_hours": "Mo-Sa 16:00-24:00",
+     "website": None},
+    {"name": "SubSolo", "kind": "bar", "distance_m": 84,
+     "address": None, "opening_hours": None, "website": None},
+]
+
+
+@contextlib.contextmanager
+def stubbed_places(places=None, error=None):
+    """Swap the OpenStreetMap lookup, or make it fail."""
+    import tool_handlers
+
+    original = tool_handlers.find_nearby
+
+    def fake(category, lat, lon, radius_m=None, limit=None, keyword=None):
+        if error:
+            raise error
+        if category not in tool_handlers.CATEGORY_TAGS:
+            raise ValueError(f"Unknown category '{category}'.")
+        return SAMPLE_PLACES if places is None else places
+
+    tool_handlers.find_nearby = fake
+    try:
+        yield
+    finally:
+        tool_handlers.find_nearby = original
+
+
 @contextlib.contextmanager
 def stubbed_weather(conditions=SAMPLE_WEATHER):
     """Swap the weather lookup so no provider is contacted."""
