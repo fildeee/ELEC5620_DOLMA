@@ -61,6 +61,26 @@ def _fmt(dt_iso: str) -> str:
     )
 
 
+def to_sydney_wall_clock(dt_iso: str) -> str:
+    """
+    Read a datetime as Sydney local time, whatever offset it arrived with.
+
+    The model writes these, and a language model cannot be trusted to know
+    whether a date falls inside Australian daylight saving. Asked for 11:45 on a
+    morning in September it produced `2026-09-24T11:45:00+11:00` — Sydney is
+    +10:00 until October, so that is 10:45 local, an hour before the user said,
+    and the hour was lost silently because the string was well-formed RFC3339.
+
+    The wall clock is the part the user actually spoke, so keep it and let
+    zoneinfo supply the offset, which it gets right on both sides of a
+    transition. Any offset already on the string is discarded: this assistant
+    schedules in Sydney and nowhere else, so a time from the model is a Sydney
+    time by definition.
+    """
+    dt = datetime.fromisoformat(dt_iso.replace("Z", "+00:00"))
+    return dt.replace(tzinfo=ZoneInfo(SYDNEY)).isoformat()
+
+
 # converts ISO 8601 string to tz-aware datetime for Google Calendar updates.
 def _to_sydney_datetime(dt_iso: str):
     tz = ZoneInfo(SYDNEY)

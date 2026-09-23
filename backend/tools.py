@@ -16,11 +16,11 @@ agent_tools = [
                 "description": { "type": "string" },
                 "start_time": {
                     "type": "string",
-                    "description": "RFC3339 datetime including year and offset, e.g. 2025-11-22T14:00:00+11:00"
+                    "description": "Start, including the year, as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-22T14:00:00"
                 },
                 "end_time": {
                     "type": "string",
-                    "description": "RFC3339 datetime including year and offset, e.g. 2025-11-22T16:00:00+11:00"
+                    "description": "End, including the year, as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-22T16:00:00"
                 },
                 "location": { "type": "string" },
                 "attendees": {
@@ -72,11 +72,11 @@ agent_tools = [
                     },
                     "time_min": {
                         "type": "string",
-                        "description": "RFC3339 start (e.g. 2025-11-04T00:00:00+11:00). Used when preset is not provided."
+                        "description": "Range start as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-04T00:00:00. Used when preset is not provided."
                     },
                     "time_max": {
                         "type": "string",
-                        "description": "RFC3339 end (e.g. 2025-11-04T23:59:59+11:00). Used when preset is not provided."
+                        "description": "Range end as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-04T23:59:59. Used when preset is not provided."
                     },
                     "max_results": {
                         "type": "integer",
@@ -136,7 +136,7 @@ agent_tools = [
                     },
                     "time_min": {
                         "type": "string",
-                        "description": "Optional custom range start in RFC3339 (e.g. 2025-11-02T00:00:00+11:00)."
+                        "description": "Optional custom range start as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-02T00:00:00."
                     },
                     "time_max": {
                         "type": "string",
@@ -156,11 +156,11 @@ agent_tools = [
                     },
                     "start_time": {
                         "type": "string",
-                        "description": "New start time in RFC3339 format."
+                        "description": "New start time as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-22T14:00:00"
                     },
                     "end_time": {
                         "type": "string",
-                        "description": "New end time in RFC3339 format."
+                        "description": "New end time as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-22T16:00:00"
                     },
                     "event_ids": {
                         "type": "array",

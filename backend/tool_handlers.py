@@ -25,6 +25,7 @@ from formatting import (
     _to_sydney_datetime,
     describe_event,
     resolve_window,
+    to_sydney_wall_clock,
 )
 from google_calendar import (
     create_calendar_event,
@@ -248,6 +249,38 @@ def handle_find_events(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
     )
 
 
+def _clashes_with(start_iso: str, end_iso: str) -> List[str]:
+    """
+    Events already on the calendar that genuinely overlap this one.
+
+    Worked out here rather than left to the model. Asked to compare a lunch at
+    11:45 against a tutorial ending at 11:45 it reported a clash, then refused to
+    book at all; no wording of the rule in the prompt reliably stopped it, because
+    the comparison is arithmetic and that is not what a language model is for.
+    Touching at the boundary is not an overlap — hence strict inequality on both
+    sides — and the model is told to trust this list over its own reading.
+    """
+    start = datetime.fromisoformat(start_iso)
+    end = datetime.fromisoformat(end_iso)
+    day_start = start.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = end.replace(hour=23, minute=59, second=59, microsecond=999000)
+
+    found = []
+    for ev in find_events(day_start, day_end, max_results=100):
+        ev_start = (ev.get("start") or {}).get("dateTime")
+        ev_end = (ev.get("end") or {}).get("dateTime")
+        if not ev_start or not ev_end:
+            continue  # an all-day event has a date but no time to compare
+        try:
+            other_start = datetime.fromisoformat(ev_start.replace("Z", "+00:00"))
+            other_end = datetime.fromisoformat(ev_end.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if other_start < end and other_end > start:
+            found.append(describe_event(ev))
+    return found
+
+
 def handle_create_event(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
     batch = args.get("events")
     if batch and not isinstance(batch, list):
@@ -272,21 +305,27 @@ def handle_create_event(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
     ]
     if missing:
         return _needs(
-            "Every event needs summary, start_time and end_time (RFC3339 with offset, "
-            f"e.g. 2025-11-22T14:00:00+11:00). Incomplete: event(s) {missing}."
+            "Every event needs summary, start_time and end_time, as Sydney local "
+            f"time, e.g. 2025-11-22T14:00:00. Incomplete: event(s) {missing}."
         )
 
+    # Pin the times to Sydney before anything reads them, so the preview the user
+    # approves and the event finally written are the same moment.
     try:
-        lines = [
-            f"{i}. {ev['summary']} — {_fmt_date_only(ev['start_time'])}, "
-            f"{_fmt_time_range(ev['start_time'], ev['end_time'])}"
-            for i, ev in enumerate(batch, start=1)
-        ]
+        for ev in batch:
+            ev["start_time"] = to_sydney_wall_clock(ev["start_time"])
+            ev["end_time"] = to_sydney_wall_clock(ev["end_time"])
     except Exception as exc:
         return _needs(
-            f"Could not read those datetimes ({exc}). Use RFC3339 with a UTC offset, "
-            "e.g. 2025-11-22T14:00:00+11:00."
+            f"Could not read those datetimes ({exc}). Give the Sydney local time, "
+            "e.g. 2025-11-22T14:00:00."
         )
+
+    lines = [
+        f"{i}. {ev['summary']} — {_fmt_date_only(ev['start_time'])}, "
+        f"{_fmt_time_range(ev['start_time'], ev['end_time'])}"
+        for i, ev in enumerate(batch, start=1)
+    ]
 
     if not confirmed:
         session["pending_creates"] = batch
@@ -301,8 +340,28 @@ def handle_create_event(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
                 ],
                 "cta": "add this now?",
             }
+        extra: Dict[str, Any] = {}
+        try:
+            clashes = []
+            for ev in batch:
+                clashes.extend(_clashes_with(ev["start_time"], ev["end_time"]))
+            extra["clashes"] = clashes
+            extra["clash_check"] = (
+                "Computed from the calendar, not estimated. An event appears here "
+                "only if it truly overlaps; one that ends exactly when this begins "
+                "does not. Trust this over your own reading of the times: if the "
+                "list is empty the slot is free and you should say so, and if it is "
+                "not, name what is in it. Either way still offer to add the event — "
+                "a clash is for the user to weigh, not a reason to refuse."
+            )
+        except Exception as exc:
+            extra["clash_check"] = (
+                f"Could not check the calendar for clashes ({exc}). Say the preview "
+                "stands but that you could not confirm the slot is free."
+            )
+
         return _confirmation(
-            "create_event", lines, ui=ui, details_in_card=bool(ui)
+            "create_event", lines, ui=ui, details_in_card=bool(ui), extra=extra
         )
 
     created, failed = [], []
@@ -406,6 +465,18 @@ def handle_update_event(args: Dict[str, Any], ctx: ToolContext) -> ToolResult:
         return _needs(
             "Nothing to change. Provide at least one of summary, description, "
             "location, start_time or end_time."
+        )
+
+    # As in handle_create_event: the wall clock is what the user asked for, so
+    # read it as Sydney rather than trusting the offset the model attached.
+    try:
+        for field_name in ("start_time", "end_time"):
+            if field_name in updates:
+                updates[field_name] = to_sydney_wall_clock(updates[field_name])
+    except Exception as exc:
+        return _needs(
+            f"Could not read that datetime ({exc}). Give the Sydney local time, "
+            "e.g. 2025-11-22T14:00:00."
         )
 
     try:

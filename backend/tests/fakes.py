@@ -139,8 +139,19 @@ def stubbed_google(events=None, connected=True):
     }
 
     def fake_find(time_min, time_max, max_results=50):
+        # An all-day event carries a plain `date` and no `dateTime`, exactly as the
+        # Google API returns it; the double has to show that or nothing downstream
+        # is ever exercised against it.
         lo, hi = time_min.isoformat(), time_max.isoformat()
-        return [e for e in events if lo <= e["start"]["dateTime"] <= hi][:max_results]
+
+        def in_window(e):
+            start = e["start"]
+            if "dateTime" in start:
+                return lo <= start["dateTime"] <= hi
+            # All-day: a date and no time, so there is only a date to compare.
+            return lo[:10] <= start.get("date", "") <= hi[:10]
+
+        return [e for e in events if in_window(e)][:max_results]
 
     def fake_create(**kwargs):
         rec.created.append(kwargs)

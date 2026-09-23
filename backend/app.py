@@ -172,6 +172,11 @@ def _system_prompt(has_location: bool) -> str:
         "keep on top of what is coming up. Stay within that role. "
         f"It is currently {now.strftime('%A, %d %B %Y')} in Sydney, Australia — include "
         f"the year ({now.year}) whenever you mention a date.\n"
+        "Every time you read or write is Sydney local time. Give the calendar tools "
+        "the wall-clock time the user said, with no UTC offset on it: write "
+        "2026-09-24T11:45:00, never 2026-09-24T11:45:00+11:00. Daylight saving is "
+        "not yours to work out — the backend applies the right offset for the date, "
+        "and an offset you add yourself will be discarded.\n"
         "\n"
         "HOW YOU WORK\n"
         "You work in a reason–act–observe loop. On each turn you may either answer the "
@@ -217,10 +222,17 @@ def _system_prompt(has_location: bool) -> str:
         )
         + "\n"
         "SCHEDULING CONFLICTS\n"
-        "You may note real overlaps, but never infer or assume a conflict between "
-        "back-to-back events. Only flag one when an event's start_time is strictly earlier "
-        "than another's end_time AND its end_time is strictly later than that event's "
-        "start_time. Do not propose reschedules automatically; carry out what the user asked."
+        "When the user asks you to put something in the calendar, go straight to "
+        "create_event. Do not look the day up first: the preview you get back already "
+        "carries a `clashes` list, worked out from their calendar for you. Report that "
+        "list as it stands — empty means the slot is free and you say so, otherwise name "
+        "what is in it.\n"
+        "Never decide for yourself, from times you have read, that two events overlap. "
+        "An event ending at 11:45 leaves 11:45 free, and the list has already applied "
+        "that rule properly. Do not describe a clash that is not in it.\n"
+        "A clash is for the user to weigh and never a veto. Whatever the list says, show "
+        "the preview and ask — do not refuse to schedule something, and do not propose a "
+        "reschedule unasked. Carry out what the user asked for."
     )
 
 

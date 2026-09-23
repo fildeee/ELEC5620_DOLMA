@@ -107,6 +107,28 @@ Two rules are enforced in code rather than trusted to the prompt:
 A preview also returns the `event_ids` it matched, and the confirming call passes
 them back, so an update or deletion touches exactly the events the user was shown.
 
+### Arithmetic the model does not do
+
+Two jobs were taken off the model because it was measurably bad at them, and both
+are the kind of thing a program is reliably good at.
+
+**Which offset a time has.** The tools once asked for RFC3339 "including offset",
+and the schema's own example carried `+11:00`. Sydney is `+11:00` only in daylight
+saving; asked in September to book lunch at 11:45 the model wrote
+`2026-09-24T11:45:00+11:00`, which is 10:45 local — the event landed an hour early
+and nothing caught it, because the string was valid and the confirmation card
+obligingly displayed the wrong time. The tools now take a plain wall-clock time and
+`formatting.to_sydney_wall_clock` resolves it against `Australia/Sydney`, which
+knows where the boundary falls. An offset the model sends anyway is discarded.
+
+**Whether two events collide.** Asked to add lunch at 11:45 when a tutorial ran
+until 11:45, the model called it a conflict and then refused to book at all. Every
+preview of a new event now carries a `clashes` list computed by
+`tool_handlers._clashes_with`, using strict inequality on both sides so that
+touching at the boundary is not an overlap, and the model is told to report that
+list rather than judge the times itself. A clash is reported, never enforced: the
+preview is still shown and the user still decides.
+
 ### Failures are observations, not crashes
 
 A tool that errors, receives malformed arguments, or finds nothing does not end the
