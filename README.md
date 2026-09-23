@@ -184,6 +184,11 @@ OPENAI_API_KEY=your_openai_api_key
 OPENWEATHER_API_KEY=your_openweather_api_key
 ```
 
+`OPENAI_API_KEY` is required; without it the assistant cannot reason or select a
+tool. `OPENWEATHER_API_KEY` is optional — `weather.py` calls OpenWeatherMap only
+when the key is set and otherwise falls back to Open-Meteo, which needs no key but
+reports fewer fields, leaving conditions, humidity and "feels like" empty.
+
 ### 2. Install Dependencies and Run the Backend
 
 ```bash
@@ -223,6 +228,79 @@ python tests/run_tests.py
 - Retrieves real-time weather data from OpenWeatherMap using browser geolocation.
 - If geolocation is unavailable, the backend uses IP-based location via `ip-api.com` for approximate results.
 - For local demos, ensure your browser allows location access when prompted on first load.
+
+---
+
+## Google Calendar Setup
+
+The calendar tools are refused outright until a Google account is connected, so
+without this the assistant can still answer weather and places questions but will
+tell you to connect Google whenever the calendar comes up. Everything here happens
+once, in the [Google Cloud console](https://console.cloud.google.com/).
+
+### 1. Create a project and enable the API
+
+Create a project, then under **APIs & Services → Library** enable the **Google
+Calendar API**. Nothing works until the API is enabled on the same project that
+issues the credentials below.
+
+### 2. Configure the consent screen and add yourself as a test user
+
+Under **Google Auth Platform → Audience** (older consoles call this the **OAuth
+consent screen**), choose the **External** user type and fill in the app name and
+support email.
+
+Then add your own Google address under **Test users**. This step is easy to miss
+and there is no way to work around it: while the app's publishing status is
+**Testing**, Google refuses authorisation for any account not on that list and
+returns `access_denied`.
+
+### 3. Create the OAuth client
+
+Under **Credentials → Create credentials → OAuth client ID**, choose the
+**Web application** type. Do not choose *Desktop app* — `app.py` drives the web
+flow, handing Google an explicit `redirect_uri` that points back at the Flask
+server.
+
+Add that callback under **Authorised redirect URIs**, matching the port the
+browser reaches the backend on:
+
+```text
+http://localhost:5000/api/google/oauth2callback
+```
+
+Google compares this string exactly, so it has to agree with `PUBLIC_PORT` (or
+`PORT` when no mapping is in play). Under Docker the browser-facing port is 5050,
+making the URI `http://localhost:5050/api/google/oauth2callback`. See
+[Resolve Port Conflicts](#3-resolve-port-conflicts) if you have moved the backend.
+
+Plain `http` is correct here. Google exempts loopback addresses from its HTTPS
+requirement, and so does DOLMA: `app.py` relaxes oauthlib's matching rule only
+when the redirect URI comes back to this machine, so no configuration is needed
+for local development and a redirect URI pointing anywhere else still has to be
+HTTPS.
+
+### 4. Save the credentials
+
+Download the client's JSON and save it as `backend/credentials.json`. Set
+`GOOGLE_CLIENT_SECRETS_FILE` if you want it somewhere else. It is excluded by
+`.gitignore` and `.dockerignore`, so it is never committed or baked into an image.
+
+### 5. Connect from the app
+
+With both servers running, open `/settings` and choose **Connect Google Calendar**.
+Google will warn that the app is unverified — expected for a project in Testing —
+so continue through the advanced link. On success the backend writes
+`backend/token.json`, `/api/google/status` reports `connected: true`, and the
+calendar tools start answering.
+
+### What to expect afterwards
+
+| | |
+|---|---|
+| **Refresh tokens expire after 7 days** | Google expires the refresh tokens it issues to an app still in **Testing**. When that happens the stored credentials stop refreshing, the app reports itself disconnected, and you reconnect from `/settings`. Worth doing shortly before a demonstration rather than the week before. |
+| **One account at a time** | `token.json` is a single file at a fixed path, so the backend holds one user's credentials, not one set per signed-in user. Fine for a prototype; it is the main thing standing between DOLMA and real multi-user deployment. |
+| **Disconnecting** | `POST /api/google/disconnect` deletes `token.json`. Deleting the file by hand does the same thing. |
 
 ---
 
@@ -354,6 +432,18 @@ To move the backend to 5050, set `PORT=5050` in `backend/.env` and
 
 Whatever you choose, these three must agree: `VITE_API_BASE`, the port the backend
 listens on, and the redirect URI authorised in Google Cloud.
+
+**On macOS, port 5000 is usually already taken.** The AirPlay Receiver in Control
+Centre listens on it, so the default port fails on a stock machine. Confirm with:
+
+```bash
+lsof -nP -iTCP:5000 -sTCP:LISTEN
+```
+
+A `ControlCe` process in that output is AirPlay. Either move the backend to 5050
+as described above, or turn the receiver off under **System Settings → General →
+AirDrop & Handoff → AirPlay Receiver**. Moving the backend is the less intrusive
+of the two, and is what the Docker setup does anyway.
 
 ---
 

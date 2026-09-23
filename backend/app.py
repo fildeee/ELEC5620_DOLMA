@@ -46,6 +46,26 @@ REDIRECT_URI = os.getenv(
 )
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
+
+def _is_loopback_http(url: Optional[str]) -> bool:
+    """True for a plain-HTTP callback that comes back to this machine."""
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url or "")
+    except Exception:
+        return False
+    return parsed.scheme == "http" and parsed.hostname in ("localhost", "127.0.0.1", "::1")
+
+
+# oauthlib refuses to finish an OAuth exchange over plain HTTP, and nobody can
+# serve HTTPS on localhost without a certificate the browser will reject anyway.
+# Google exempts loopback redirect URIs from its own HTTPS requirement for that
+# reason; relax oauthlib on the same terms and no further. A redirect URI that
+# points anywhere but this machine still has to be HTTPS, and setdefault leaves
+# an explicit setting in the environment alone.
+if _is_loopback_http(REDIRECT_URI):
+    os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
+
 def _origin_from_url(url: Optional[str]) -> Optional[str]:
     if not url:
         return None
