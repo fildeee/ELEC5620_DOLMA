@@ -100,6 +100,11 @@ def google_login():
         prompt="consent",
     )
     session["oauth_state"] = state
+    # authorization_url() generates a PKCE verifier and sends Google only its
+    # hash. The callback builds a second Flow, so the verifier itself has to
+    # travel in the session; without it Google rejects the exchange with
+    # "Missing code verifier".
+    session["oauth_code_verifier"] = flow.code_verifier
     return redirect(authorization_url)
 
 @app.get("/api/google/oauth2callback")
@@ -112,6 +117,7 @@ def google_oauth2callback():
         scopes=GOOGLE_SCOPES,
         redirect_uri=REDIRECT_URI,
         state=state,
+        code_verifier=session.get("oauth_code_verifier"),
     )
     flow.fetch_token(authorization_response=request.url)
     creds = flow.credentials
