@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
+import { isLoggedIn, login } from "../auth.js";
 
 export default function Signin() {
   const navigate = useNavigate();
@@ -15,9 +16,16 @@ export default function Signin() {
     // Simulate validation (replace with real backend check later)
     console.log("User signed in:", form);
 
+    login(form.email);
+
     // Instantly route to home page
-    navigate("/home");
+    navigate("/home", { replace: true });
   };
+
+  // Already signed in: skip the form
+  if (isLoggedIn()) {
+    return <Navigate to="/home" replace />;
+  }
 
   return (
     <div className="auth-page">
