@@ -1143,6 +1143,12 @@ def chat():
         print("Error:", e)
         return jsonify({"error": str(e)}), 500
 
+@app.post("/api/logout")
+def logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
 @app.get("/api/health")
 def health():
     return jsonify({"ok": True})
