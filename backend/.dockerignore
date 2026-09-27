@@ -2,5 +2,22 @@ node_modules
 dist
 .git
 Dockerfile
+# The host virtualenv is built for the host OS; the image builds its own.
+.venv
+__pycache__
+*.pyc
 
+# Secrets must not be baked into image layers. docker-compose supplies .env at
+# runtime via env_file and bind-mounts ./backend over /app, so the Google files are
+# available to the running container without being copied into the image:
+# credentials.json is the OAuth client secret, and token.json is a per-developer
+# credential the app writes itself after the OAuth flow. If the backend is ever run
+# from this image WITHOUT that bind mount, mount credentials.json in and point
+# GOOGLE_CLIENT_SECRETS_FILE at it rather than adding it back here.
+.env
+.env.*
+credentials.json
+token.json
+
+# Local user database
 users.db

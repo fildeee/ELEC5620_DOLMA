@@ -10,11 +10,12 @@ from zoneinfo import ZoneInfo
 
 from typing import List, Dict
 
-DEFAULT_TZ = os.getenv("USER_TIMEZONE", "UTC")
+DEFAULT_TZ = os.getenv("USER_TIMEZONE", "Australia/Sydney")
 
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-TOKEN_PATH = "token.json"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+TOKEN_PATH = os.getenv("TOKEN_FILE", os.path.join(BASE_DIR, "token.json"))
 
 def load_creds() -> Optional[Credentials]:
     if os.path.exists(TOKEN_PATH):
