@@ -1,26 +1,32 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { register } from "../auth.js";
 
 export default function Signup() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ name: "", email: "", password: "" });
   const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // Simulate signup success (later, connect to Flask backend)
-    console.log("User signed up:", form);
-
-    // Show success message
-    setSuccess(true);
-
-    // Redirect to Sign In after 2 seconds
-    setTimeout(() => navigate("/signin"), 2000);
+    setError("");
+    setSubmitting(true);
+    try {
+      await register(form);
+      setSuccess(true);
+      // Redirect to Sign In after 2 seconds
+      setTimeout(() => navigate("/signin"), 2000);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -56,11 +62,14 @@ export default function Signup() {
                 placeholder="Password"
                 value={form.password}
                 onChange={handleChange}
+                minLength={6}
                 required
               />
 
-              <button type="submit" className="btn primary auth-btn">
-                Sign Up
+              {error && <p className="auth-error">{error}</p>}
+
+              <button type="submit" className="btn primary auth-btn" disabled={submitting}>
+                {submitting ? "Creating Account..." : "Sign Up"}
               </button>
             </form>
 
