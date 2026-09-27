@@ -477,13 +477,7 @@ export default function Home() {
 
   const handleLogout = async () => {
     if (!window.confirm("Log out of DOLMA?")) return;
-    try {
-      // Clear any server-side chat session state (e.g. pending events)
-      await fetch(apiUrl("/api/logout"), { method: "POST", credentials: "include" });
-    } catch (_) {
-      // Backend unreachable: still log out locally
-    }
-    logout();
+    await logout();
     navigate("/signin", { replace: true });
   };
 
@@ -507,7 +501,7 @@ export default function Home() {
           <button className="sidebar-btn" onClick={() => navigate("/settings")}>
             ⚙️ Settings
           </button>
-          {currentUser?.email && (
+          {currentUser && (
             <p className="sidebar-user" title={currentUser.email}>
               {currentUser.email}
             </p>

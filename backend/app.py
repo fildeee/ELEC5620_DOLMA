@@ -3,6 +3,7 @@ from flask_cors import CORS
 from openai import OpenAI
 from dotenv import load_dotenv
 import os
+from datetime import timedelta
 from typing import Optional
 
 from google_auth_oauthlib.flow import Flow
@@ -17,12 +18,22 @@ from google_calendar import (
 from tool_handlers import ToolContext, make_dispatcher
 from tools import agent_tools
 from weather import get_client_ip
+from users import (
+    UserError,
+    authenticate as users_authenticate,
+    create_user as users_create_user,
+    get_user as users_get_user,
+    init_db as users_init_db,
+)
 
 load_dotenv()
 
 app = Flask(__name__)
 
 app.secret_key = os.getenv("FLASK_SECRET_KEY", "dev-secret-change-me")
+app.permanent_session_lifetime = timedelta(days=7)
+
+users_init_db()
 
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
@@ -286,6 +297,47 @@ def chat():
     payload["trace"] = run.trace
     payload["stop_reason"] = run.stop_reason
     return jsonify(payload)
+
+
+def _start_user_session(user: dict) -> None:
+    session.clear()
+    session.permanent = True
+    session["user_id"] = user["id"]
+
+
+@app.post("/api/auth/register")
+def register():
+    data = request.get_json(silent=True) or {}
+    try:
+        user = users_create_user(data.get("name"), data.get("email"), data.get("password"))
+    except UserError as e:
+        return jsonify({"error": str(e)}), e.status
+    return jsonify({"user": user}), 201
+
+
+@app.post("/api/auth/login")
+def login():
+    data = request.get_json(silent=True) or {}
+    user = users_authenticate(data.get("email"), data.get("password"))
+    if not user:
+        return jsonify({"error": "Incorrect email or password."}), 401
+    _start_user_session(user)
+    return jsonify({"user": user})
+
+
+@app.get("/api/auth/me")
+def current_user():
+    user_id = session.get("user_id")
+    user = users_get_user(user_id) if user_id else None
+    if not user:
+        return jsonify({"error": "Not logged in."}), 401
+    return jsonify({"user": user})
+
+
+@app.post("/api/logout")
+def logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 
 @app.get("/api/health")

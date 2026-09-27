@@ -1,31 +1,41 @@
-import React, { useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { isLoggedIn, login } from "../auth.js";
+import React, { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { fetchCurrentUser, login } from "../auth.js";
 
 export default function Signin() {
   const navigate = useNavigate();
   const [form, setForm] = useState({ email: "", password: "" });
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  // Already signed in: skip the form
+  useEffect(() => {
+    let cancelled = false;
+    fetchCurrentUser().then((user) => {
+      if (user && !cancelled) navigate("/home", { replace: true });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate]);
 
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-
-    // Simulate validation (replace with real backend check later)
-    console.log("User signed in:", form);
-
-    login(form.email);
-
-    // Instantly route to home page
-    navigate("/home", { replace: true });
+    setError("");
+    setSubmitting(true);
+    try {
+      await login(form.email, form.password);
+      navigate("/home", { replace: true });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
   };
-
-  // Already signed in: skip the form
-  if (isLoggedIn()) {
-    return <Navigate to="/home" replace />;
-  }
 
   return (
     <div className="auth-page">
@@ -51,8 +61,10 @@ export default function Signin() {
             required
           />
 
-          <button type="submit" className="btn primary auth-btn">
-            Sign In
+          {error && <p className="auth-error">{error}</p>}
+
+          <button type="submit" className="btn primary auth-btn" disabled={submitting}>
+            {submitting ? "Signing In..." : "Sign In"}
           </button>
         </form>
 
