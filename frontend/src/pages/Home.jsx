@@ -1,18 +1,10 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import dolmaFace from "../assets/dolma_face.png";
 import hat_classic from "../assets/hat_classic.png";
 import hat_scholar from "../assets/hat_scholar.png";
 import hat_strategist from "../assets/hat_strategist.png";
 import { getCurrentUser, logout } from "../auth.js";
-
-const CATEGORY_UNITS = {
-  fitness: "KM",
-  study: "pages",
-  finance: "$",
-  hours: "hours",
-  other: "",
-};
 
 const HAT_STORAGE_KEY = "dolmaHat";
 const HAT_VARIANTS = {
@@ -127,6 +119,106 @@ function TipsCard({ tips, place, weather }) {
   );
 }
 
+// renders the places a find_places lookup returned, mirroring TipsCard
+function PlacesCard({ places, category }) {
+  if (!Array.isArray(places) || places.length === 0) return null;
+
+  const card = {
+    marginTop: "10px",
+    background: "linear-gradient(180deg, #f8fbff 0%, #f1f6ff 100%)",
+    border: "1px solid #d6e4ff",
+    borderRadius: "10px",
+    padding: "12px 14px",
+    maxWidth: "640px",
+    color: "#1f2d3d",
+    boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+  };
+  const header = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 8,
+  };
+  const title = { fontWeight: 700, fontSize: 14 };
+  const source = { fontSize: 12, color: "#4a5660" };
+  const row = {
+    background: "#ffffff",
+    border: "1px solid #e8eefc",
+    borderRadius: 8,
+    padding: "8px 10px",
+    marginBottom: 6,
+  };
+  const nameLine = {
+    display: "flex",
+    alignItems: "baseline",
+    justifyContent: "space-between",
+    gap: 10,
+  };
+  const name = { fontWeight: 600, fontSize: 13, color: "#25313b" };
+  const distance = { fontSize: 12, color: "#0084ff", whiteSpace: "nowrap" };
+  const detail = { fontSize: 12, color: "#4a5660", marginTop: 3 };
+  // OpenStreetMap opening hours run long ("Mo-We 12:00-00:00; Th ..."), so keep
+  // them to one line and put the full string in the tooltip.
+  const oneLine = {
+    ...detail,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+  const unlisted = { ...detail, fontStyle: "italic", color: "#8a949c" };
+
+  const formatDistance = (metres) => {
+    if (typeof metres !== "number") return null;
+    return metres < 1000 ? `${metres} m` : `${(metres / 1000).toFixed(1)} km`;
+  };
+
+  return (
+    <div className="places-card" style={card}>
+      <div style={header}>
+        <div style={title}>
+          Nearby{category ? ` \u00b7 ${category}` : ""}
+        </div>
+        <div style={source}>{places.length} from OpenStreetMap</div>
+      </div>
+
+      {places.map((place, idx) => (
+        <div key={`${place.name}-${idx}`} style={row}>
+          <div style={nameLine}>
+            <span style={name}>{place.name}</span>
+            <span style={distance}>{formatDistance(place.distance_m)}</span>
+          </div>
+
+          {/* shown either way: a blank line would read as "no address needed" */}
+          {place.address ? (
+            <div style={detail}>{place.address}</div>
+          ) : (
+            <div style={unlisted}>Address not listed</div>
+          )}
+
+          {place.opening_hours && (
+            <div style={oneLine} title={place.opening_hours}>
+              {place.opening_hours}
+            </div>
+          )}
+
+          {place.website && (
+            <div style={detail}>
+              <a
+                href={place.website}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: "#0084ff" }}
+              >
+                Website
+              </a>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // renders label/value rows under a message
 function KVList({ items }) {
   if (!items || !items.length) return null;
@@ -160,20 +252,6 @@ export default function Home() {
   const [locError, setLocError] = useState(null);
   const [locInfo, setLocInfo] = useState(null);
   const [permState, setPermState] = useState(null);
-  const [goals, setGoals] = useState([]);
-  const [goalForm, setGoalForm] = useState({
-    title: "",
-    description: "",
-    target_date: "",
-    target_value: "",
-    category: "fitness",
-    custom_unit: "",
-  });
-  const [progressDrafts, setProgressDrafts] = useState({});
-  const [goalError, setGoalError] = useState(null);
-  const [goalMessage, setGoalMessage] = useState(null);
-  const [goalLoading, setGoalLoading] = useState(false);
-  const [goalSaving, setGoalSaving] = useState(false);
   const chatEndRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -201,54 +279,7 @@ export default function Home() {
 
   const API_BASE = resolveApiBase();
   const apiUrl = (path) => `${API_BASE}${path}`;
-  const formatNumber = (value) => {
-    if (typeof value !== "number" || Number.isNaN(value)) {
-      return null;
-    }
-    const rounded = Math.round(value);
-    if (Math.abs(value - rounded) < 1e-6) {
-      return String(rounded);
-    }
-    return value.toFixed(1).replace(/\.0$/, "");
-  };
-  const formatWithUnit = (value, unitSymbol) => {
-    if (value === null || value === undefined) return null;
-    const numText = formatNumber(value);
-    if (!numText) return null;
-    if (!unitSymbol) return numText;
-    if (unitSymbol === "$") return `$${numText}`;
-    if (unitSymbol.toLowerCase() === "hours") {
-      return `${numText} hours`;
-    }
-    return `${numText} ${unitSymbol}`;
-  };
   const hatMeta = HAT_VARIANTS[hat] || HAT_VARIANTS.hat_classic;
-
-  const fetchGoals = useCallback(async () => {
-    try {
-      setGoalLoading(true);
-      setGoalError(null);
-      const resp = await fetch(apiUrl("/api/goals"));
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(data?.error || `HTTP ${resp.status}`);
-      }
-      setGoals(Array.isArray(data.goals) ? data.goals : []);
-    } catch (err) {
-      console.error("Fetch goals error:", err);
-      setGoalError(
-        err?.message
-          ? `Unable to load goals: ${err.message}`
-          : "Unable to load goals right now."
-      );
-    } finally {
-      setGoalLoading(false);
-    }
-  }, [API_BASE]);
-
-  useEffect(() => {
-    fetchGoals();
-  }, [fetchGoals]);
 
   useEffect(() => {
     console.info("[DOLMA] API base URL:", API_BASE);
@@ -306,208 +337,6 @@ export default function Home() {
   };
 }, []);
 
-  useEffect(() => {
-    setProgressDrafts((prev) => {
-      const next = {};
-      (goals || []).forEach((goal) => {
-        if (!goal || !goal.id) {
-          return;
-        }
-        if (Object.prototype.hasOwnProperty.call(prev, goal.id)) {
-          next[goal.id] = prev[goal.id];
-        } else {
-          next[goal.id] = String(
-            typeof goal.progress === "number" ? goal.progress : 0
-          );
-        }
-      });
-      return next;
-    });
-  }, [goals]);
-
-  useEffect(() => {
-    if (!goalMessage) return;
-    const timer = setTimeout(() => setGoalMessage(null), 4000);
-    return () => clearTimeout(timer);
-  }, [goalMessage]);
-
-  const applyGoalUpdate = useCallback(
-    async (goalId, payload, successText) => {
-      try {
-        setGoalError(null);
-        setGoalMessage(null);
-        const resp = await fetch(apiUrl(`/api/goals/${goalId}`), {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) {
-          throw new Error(data.error || `HTTP ${resp.status}`);
-        }
-        const { system_message, ...goalData } = data;
-        setGoals((prev) =>
-          prev.map((goal) => (goal.id === goalId ? goalData : goal))
-        );
-        setProgressDrafts((prev) => ({
-          ...prev,
-          [goalId]: String(goalData.progress ?? 0),
-        }));
-        setGoalMessage(successText || "Goal updated.");
-        if (system_message) {
-          setMessages((prev) => [
-            ...prev,
-            { role: "assistant", text: system_message },
-          ]);
-        }
-      } catch (err) {
-        console.error("Update goal error:", err);
-        setGoalError(err.message || "Unable to update goal.");
-      }
-    },
-    [API_BASE]
-  );
-
-  const handleGoalSubmit = async (e) => {
-    e.preventDefault();
-    const trimmedTitle = goalForm.title.trim();
-    if (!trimmedTitle) {
-      setGoalError("Please give your goal a title.");
-      return;
-    }
-    setGoalSaving(true);
-    setGoalMessage(null);
-    setGoalError(null);
-    try {
-      const payload = { title: trimmedTitle };
-      if (goalForm.description.trim()) {
-        payload.description = goalForm.description.trim();
-      }
-      if (goalForm.target_date) {
-        payload.target_date = goalForm.target_date;
-      }
-      const rawTarget = String(goalForm.target_value || "").trim();
-      if (!rawTarget) {
-        setGoalError("Please set a target amount.");
-        setGoalSaving(false);
-        return;
-      }
-      const numericTarget = Number(rawTarget);
-      if (Number.isNaN(numericTarget) || numericTarget <= 0) {
-        setGoalError("Target amount must be a positive number.");
-        setGoalSaving(false);
-        return;
-      }
-      payload.target_value = numericTarget;
-      const category = goalForm.category || "fitness";
-      let unitSymbol = CATEGORY_UNITS[category] || "";
-      if (category === "other") {
-        const customUnit = goalForm.custom_unit.trim();
-        if (!customUnit) {
-          setGoalError("Please provide a unit label for this goal.");
-          setGoalSaving(false);
-          return;
-        }
-        unitSymbol = customUnit;
-      }
-      payload.target_unit = unitSymbol;
-      payload.progress_value = 0;
-      const resp = await fetch(apiUrl("/api/goals"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(data.error || `HTTP ${resp.status}`);
-      }
-      setGoals((prev) => [...prev, data]);
-      setGoalForm({
-        title: "",
-        description: "",
-        target_date: "",
-        target_value: "",
-        category: goalForm.category,
-        custom_unit: category === "other" ? goalForm.custom_unit : "",
-      });
-      setGoalMessage("Goal saved!");
-    } catch (err) {
-      console.error("Create goal error:", err);
-      setGoalError(err.message || "Unable to save goal.");
-    } finally {
-      setGoalSaving(false);
-    }
-  };
-
-  const handleProgressDraftChange = (goalId, value) => {
-    setProgressDrafts((prev) => ({
-      ...prev,
-      [goalId]: value,
-    }));
-  };
-
-  const handleProgressApply = async (goalId) => {
-    const raw = progressDrafts[goalId];
-    const numeric = Number(raw);
-    if (Number.isNaN(numeric)) {
-      setGoalError("Progress must be a number between 0 and 100.");
-      return;
-    }
-    const bounded = Math.max(0, Math.min(100, numeric));
-    await applyGoalUpdate(goalId, { progress: bounded }, "Progress updated.");
-  };
-
-  const handleGoalComplete = (goalId) =>
-    applyGoalUpdate(
-      goalId,
-      { progress: 100, status: "completed" },
-      "Nice work! Goal marked complete."
-    );
-
-  const handleGoalArchive = (goalId) =>
-    applyGoalUpdate(goalId, { status: "archived" }, "Goal archived.");
-
-  const handleGoalActivate = (goalId) =>
-    applyGoalUpdate(goalId, { status: "active" }, "Goal reactivated.");
-
-  const handleGoalDelete = async (goalId) => {
-    if (typeof window !== "undefined" && !window.confirm("Remove this goal?")) {
-      return;
-    }
-    try {
-      setGoalError(null);
-      setGoalMessage(null);
-      const resp = await fetch(apiUrl(`/api/goals/${goalId}`), {
-        method: "DELETE",
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) {
-        throw new Error(data?.error || `HTTP ${resp.status}`);
-      }
-      const { system_message } = data;
-      setGoals((prev) => prev.filter((goal) => goal.id !== goalId));
-      setProgressDrafts((prev) => {
-        const next = { ...prev };
-        delete next[goalId];
-        return next;
-      });
-      setGoalMessage("Goal removed.");
-      if (system_message) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", text: system_message },
-        ]);
-      }
-    } catch (err) {
-      console.error("Delete goal error:", err);
-      setGoalError(err.message || "Unable to delete goal.");
-    }
-  };
-
-  const handleGoalRefresh = () => {
-    fetchGoals();
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
@@ -542,10 +371,6 @@ export default function Home() {
       }
       console.log("DOLMA response:", data);
 
-      if (Array.isArray(data.goals)) {
-        setGoals(data.goals);
-      }
-
       // builds a single assistant message that prefers structured fields if present
       const assistantMsg = {
         role: "assistant",
@@ -556,6 +381,8 @@ export default function Home() {
         tips: data.tips,
         place: data.place_name || null,
         weather: data.weather || null,
+        places: Array.isArray(data.places) ? data.places : null,
+        placesCategory: data.places_category || null,
       };
 
       if (assistantMsg.text || assistantMsg.reply_md || assistantMsg.items || assistantMsg.cta) {
@@ -723,6 +550,9 @@ export default function Home() {
                     weather={msg.weather}
                   />
                 )}
+                {msg.places && (
+                  <PlacesCard places={msg.places} category={msg.placesCategory} />
+                )}
               </div>
             ))}
             <div ref={chatEndRef} />
@@ -754,242 +584,6 @@ export default function Home() {
           </form>
         </div>
 
-        <aside className="goals-pane">
-          <div className="goals-header">
-            <h3>Goal Tracker</h3>
-            <button
-              type="button"
-              className="goals-refresh"
-              onClick={handleGoalRefresh}
-              disabled={goalLoading}
-              title="Refresh goals"
-            >
-              ⟳
-            </button>
-          </div>
-
-          {goalMessage && <div className="goal-toast success">{goalMessage}</div>}
-          {goalError && <div className="goal-toast error">{goalError}</div>}
-
-          <form className="goal-form" onSubmit={handleGoalSubmit}>
-            <input
-              type="text"
-              placeholder="What goal should we track?"
-              value={goalForm.title}
-              onChange={(e) =>
-                setGoalForm((prev) => ({ ...prev, title: e.target.value }))
-              }
-            />
-            <div className="goal-form-row">
-              <input
-                type="number"
-                min="0"
-                step="any"
-                placeholder="Target amount"
-                value={goalForm.target_value}
-                onChange={(e) =>
-                  setGoalForm((prev) => ({
-                    ...prev,
-                    target_value: e.target.value,
-                  }))
-                }
-              />
-              <select
-                className="unit-select"
-                value={goalForm.category}
-                onChange={(e) =>
-                  setGoalForm((prev) => ({
-                    ...prev,
-                    category: e.target.value,
-                    custom_unit: e.target.value === "other" ? prev.custom_unit : "",
-                  }))
-                }
-              >
-                <option value="fitness">Fitness (km)</option>
-                <option value="study">Study (pages)</option>
-                <option value="finance">Finance ($)</option>
-                <option value="hours">Focus (hours)</option>
-                <option value="other">Other unit…</option>
-              </select>
-              {goalForm.category === "other" && (
-                <input
-                  type="text"
-                  className="custom-unit-input"
-                  placeholder="Unit label (e.g. reps)"
-                  value={goalForm.custom_unit}
-                  onChange={(e) =>
-                    setGoalForm((prev) => ({
-                      ...prev,
-                      custom_unit: e.target.value,
-                    }))
-                  }
-                />
-              )}
-            </div>
-            <textarea
-              rows="3"
-              placeholder="Optional details"
-              value={goalForm.description}
-              onChange={(e) =>
-                setGoalForm((prev) => ({
-                  ...prev,
-                  description: e.target.value,
-                }))
-              }
-            />
-            <div className="goal-form-row">
-              <input
-                type="date"
-                value={goalForm.target_date}
-                onChange={(e) =>
-                  setGoalForm((prev) => ({
-                    ...prev,
-                    target_date: e.target.value,
-                  }))
-                }
-              />
-              <button type="submit" disabled={goalSaving}>
-                {goalSaving ? "Saving…" : "Add Goal"}
-              </button>
-            </div>
-          </form>
-
-          <div className="goal-list">
-            {goalLoading ? (
-              <p className="goal-placeholder">Loading goals…</p>
-            ) : goals.length === 0 ? (
-              <p className="goal-placeholder">
-                No goals yet. Let’s create one!
-              </p>
-            ) : (
-              goals.map((goal) => {
-                const description = (goal.description || "").trim();
-                const draftPercent =
-                  progressDrafts[goal.id] !== undefined
-                    ? progressDrafts[goal.id]
-                    : String(goal.progress ?? 0);
-                const targetValue =
-                  typeof goal.target_value === "number" ? goal.target_value : null;
-                let progressValue =
-                  typeof goal.progress_value === "number"
-                    ? goal.progress_value
-                    : null;
-                const progressPct =
-                  typeof goal.progress === "number" ? goal.progress : 0;
-                const clampedProgress = Math.max(
-                  0,
-                  Math.min(100, progressPct)
-                );
-                const unitLabel = (goal.target_unit || "").trim();
-                if (progressValue === null && targetValue !== null) {
-                  progressValue = (targetValue * progressPct) / 100;
-                }
-                const remainingValue =
-                  targetValue !== null && progressValue !== null
-                    ? Math.max(targetValue - progressValue, 0)
-                    : null;
-                const targetDisplay =
-                  targetValue !== null ? formatWithUnit(targetValue, unitLabel) : null;
-                const remainingDisplay =
-                  remainingValue !== null ? formatWithUnit(remainingValue, unitLabel) : null;
-                const completedDisplay =
-                  progressValue !== null ? formatWithUnit(progressValue, unitLabel) : null;
-                return (
-                  <div className="goal-card" key={goal.id}>
-                    <div className="goal-card-header">
-                      <div>
-                        <h4>{goal.title || "Untitled goal"}</h4>
-                        {description && <p>{description}</p>}
-                      </div>
-                      <span
-                        className={`goal-status badge-${goal.status || "active"}`}
-                      >
-                        {goal.status || "active"}
-                      </span>
-                    </div>
-                    <div className="goal-meta">
-                      <span>
-                        Progress: {progressPct}%
-                        {completedDisplay ? ` (${completedDisplay})` : ""}
-                      </span>
-                      {targetDisplay && (
-                        <span>
-                          Target: {targetDisplay}
-                          {goal.target_date ? ` (due ${goal.target_date})` : ""}
-                        </span>
-                      )}
-                      {!targetDisplay && goal.target_date && <span>Due: {goal.target_date}</span>}
-                      {targetDisplay && remainingDisplay !== null && remainingValue !== null && remainingValue > 0 && (
-                        <span>
-                          Remaining: {remainingDisplay}
-                        </span>
-                      )}
-                    </div>
-                    <div className="goal-progress">
-                      <div
-                        className="goal-progress-bar"
-                        style={{ width: `${clampedProgress}%` }}
-                      />
-                    </div>
-                    <div className="goal-controls">
-                      <div className="progress-input">
-                        <input
-                          type="number"
-                          min="0"
-                          max="100"
-                          value={draftPercent}
-                          onChange={(e) =>
-                            handleProgressDraftChange(goal.id, e.target.value)
-                          }
-                          placeholder="%"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => handleProgressApply(goal.id)}
-                        >
-                          Update
-                        </button>
-                      </div>
-                      <div className="goal-buttons">
-                        <button
-                          type="button"
-                          className="complete-btn"
-                          onClick={() => handleGoalComplete(goal.id)}
-                          disabled={goal.status === "completed"}
-                        >
-                          ✓ Complete
-                        </button>
-                        {goal.status !== "archived" && (
-                          <button
-                            type="button"
-                            onClick={() => handleGoalArchive(goal.id)}
-                          >
-                            Archive
-                          </button>
-                        )}
-                        {goal.status === "archived" && (
-                          <button
-                            type="button"
-                            onClick={() => handleGoalActivate(goal.id)}
-                          >
-                            Activate
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          className="danger"
-                          onClick={() => handleGoalDelete(goal.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </aside>
       </main>
     </div>
   );

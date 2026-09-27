@@ -1,9 +1,9 @@
-calendar_tools = [
+agent_tools = [
     {
     "type": "function",
     "function": {
         "name": "create_event",
-        "description": "Create one or more Google Calendar events. Ask user for missing details before calling with confirm=true.",
+        "description": "Create one or more Google Calendar events. Call with confirm=false first to get a preview back; only call again with confirm=true after the user has explicitly agreed in a later message.",
         "parameters": {
         "type": "object",
         "properties": {
@@ -16,11 +16,11 @@ calendar_tools = [
                 "description": { "type": "string" },
                 "start_time": {
                     "type": "string",
-                    "description": "RFC3339 datetime including year and offset, e.g. 2025-11-22T14:00:00+11:00"
+                    "description": "Start, including the year, as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-22T14:00:00"
                 },
                 "end_time": {
                     "type": "string",
-                    "description": "RFC3339 datetime including year and offset, e.g. 2025-11-22T16:00:00+11:00"
+                    "description": "End, including the year, as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-22T16:00:00"
                 },
                 "location": { "type": "string" },
                 "attendees": {
@@ -72,11 +72,11 @@ calendar_tools = [
                     },
                     "time_min": {
                         "type": "string",
-                        "description": "RFC3339 start (e.g. 2025-11-04T00:00:00+11:00). Used when preset is not provided."
+                        "description": "Range start as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-04T00:00:00. Used when preset is not provided."
                     },
                     "time_max": {
                         "type": "string",
-                        "description": "RFC3339 end (e.g. 2025-11-04T23:59:59+11:00). Used when preset is not provided."
+                        "description": "Range end as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-04T23:59:59. Used when preset is not provided."
                     },
                     "max_results": {
                         "type": "integer",
@@ -90,7 +90,7 @@ calendar_tools = [
         "type": "function",
         "function": {
             "name": "delete_event",
-            "description": "Delete one or more events matching a title keyword and optional date range or preset. Shows preview first, confirm=true to apply.",
+            "description": "Delete one or more events matching a title keyword and optional date range or preset. Call with confirm=false first; the preview returns the matching event_ids. Only call with confirm=true after the user agrees.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -105,6 +105,11 @@ calendar_tools = [
                     },
                     "time_min": {"type": "string"},
                     "time_max": {"type": "string"},
+                    "event_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Event IDs returned by this tool's preview. Pass them back on the confirm call so only the previewed events are touched."
+                    },
                     "confirm": {"type": "boolean"}
                 },
                 "required": ["query"]
@@ -116,7 +121,7 @@ calendar_tools = [
         "type": "function",
         "function": {
             "name": "update_event",
-            "description": "Update one or more Google Calendar events matching a title or keyword. Use for changing details like title, description, location, or time. Always preview before confirming.",
+            "description": "Update one or more Google Calendar events matching a title or keyword. Call with confirm=false first; the preview returns the matching event_ids. Only call with confirm=true after the user agrees.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -131,7 +136,7 @@ calendar_tools = [
                     },
                     "time_min": {
                         "type": "string",
-                        "description": "Optional custom range start in RFC3339 (e.g. 2025-11-02T00:00:00+11:00)."
+                        "description": "Optional custom range start as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-02T00:00:00."
                     },
                     "time_max": {
                         "type": "string",
@@ -151,11 +156,16 @@ calendar_tools = [
                     },
                     "start_time": {
                         "type": "string",
-                        "description": "New start time in RFC3339 format."
+                        "description": "New start time as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-22T14:00:00"
                     },
                     "end_time": {
                         "type": "string",
-                        "description": "New end time in RFC3339 format."
+                        "description": "New end time as Sydney local time, no UTC offset — the backend applies the correct one, including daylight saving. e.g. 2025-11-22T16:00:00"
+                    },
+                    "event_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Event IDs returned by this tool's preview. Pass them back on the confirm call so only the previewed events are touched."
                     },
                     "confirm": {
                         "type": "boolean",
@@ -170,118 +180,46 @@ calendar_tools = [
     {
         "type": "function",
         "function": {
-            "name": "create_goal",
-            "description": "Create a new personal goal for the user. Present a preview before calling with confirm=true.",
+            "name": "find_places",
+            "description": "Find real places near the user, from OpenStreetMap. Use this whenever the user asks what is nearby or wants somewhere to go \u2014 a bar, a cafe, a gym. Never name a venue that this tool did not return. Read-only.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "title": {"type": "string", "description": "Short goal title."},
-                    "description": {"type": "string", "description": "Optional detail about the goal."},
-                    "target_date": {
+                    "category": {
                         "type": "string",
-                        "description": "Optional target completion date in ISO8601 (e.g. 2025-09-12)."
+                        "enum": ["bank", "bar", "cafe", "gym", "hospital", "library", "nightclub", "park", "pharmacy", "restaurant", "supermarket"],
+                        "description": "The closest category to what the user asked for. 'bar' also covers pubs, 'restaurant' also covers takeaway."
                     },
-                    "target_value": {
-                        "type": "number",
-                        "description": "Optional numeric target total (e.g. 70 for 70 km, 120 for pages)."
-                    },
-                    "target_unit": {
+                    "keyword": {
                         "type": "string",
-                        "description": "Unit for the goal target (e.g. km, pages, $, minutes)."
+                        "description": "Optional. Only return places whose name contains this text."
                     },
-                    "target_period": {
-                        "type": "string",
-                        "description": "Optional cadence or context like 'this week' or 'by Saturday'."
-                    },
-                    "progress_value": {
-                        "type": "number",
-                        "description": "Optional starting progress expressed in the same unit as the target."
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Set true only after the user approves the goal."
-                    },
-                },
-                "required": ["title"]
-            }
-        }
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "update_goal",
-            "description": "Update an existing goal's progress, details, or status. Confirm with the user before making changes.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "goal_id": {"type": "string", "description": "Identifier of the goal to update."},
-                    "goal_title": {
-                        "type": "string",
-                        "description": "Use when the goal ID is unknown; provide the goal title or a distinctive part of it."
-                    },
-                    "title": {"type": "string"},
-                    "description": {"type": "string"},
-                    "target_date": {
-                        "type": "string",
-                        "description": "New target date in ISO8601 (e.g. 2025-10-01)."
-                    },
-                    "progress": {
+                    "radius_m": {
                         "type": "integer",
-                        "minimum": 0,
-                        "maximum": 100,
-                        "description": "Progress percentage from 0 to 100."
+                        "description": "Search radius in metres. Default 1500, maximum 5000."
                     },
-                    "progress_value": {
-                        "type": "number",
-                        "description": "Amount of progress completed so far in the goal's unit."
-                    },
-                    "status": {
-                        "type": "string",
-                        "enum": ["active", "completed", "archived"],
-                        "description": "New goal status."
-                    },
-                    "target_value": {
-                        "type": "number",
-                        "description": "Update the goal's total target amount."
-                    },
-                    "target_unit": {
-                        "type": "string",
-                        "description": "Update the goal's unit (e.g. km, pages, $)."
-                    },
-                    "target_period": {
-                        "type": "string",
-                        "description": "Update the cadence/context like 'this week'."
-                    },
-                    "note": {
-                        "type": "string",
-                        "description": "Optional note or milestone update to add to the goal history."
-                    },
-                    "confirm": {
-                        "type": "boolean",
-                        "description": "Set true only after the user confirms the update."
-                    },
+                    "limit": {
+                        "type": "integer",
+                        "description": "How many places to return. Default 8, maximum 20."
+                    }
                 },
-                "required": []
+                "required": ["category"]
             }
         }
     },
+
     {
         "type": "function",
         "function": {
-            "name": "list_goals",
-            "description": "Retrieve the user's goals for summary or review.",
+            "name": "get_weather",
+            "description": "Get the current weather for the user's location, with clothing and outdoor-activity tips. Call this whenever the weather is relevant \u2014 the user asks about it, or you need it to advise on an outdoor event. Uses the browser location the user granted, falling back to an IP estimate. Read-only.",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "status": {
-                        "type": "string",
-                        "enum": ["active", "completed", "archived"],
-                        "description": "Optional filter for goal status."
-                    }
-                }
+                "properties": {}
             }
         }
     },
+
     # {
     #     "type": "function",
     #     "name": "get_events",

@@ -13,6 +13,15 @@ credentials.json
 token.json
 __pycache__/
 
+# Python virtual environments. uv creates backend/.venv from uv.lock, so the
+# environment is reproducible and never belongs in the repository; uv.lock itself
+# is committed and must not be ignored.
+.venv/
+
+# macOS finder metadata
+.DS_Store
+**/.DS_Store
+
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 

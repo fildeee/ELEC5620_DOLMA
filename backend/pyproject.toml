@@ -1,0 +1,31 @@
+[project]
+name = "dolma-backend"
+version = "0.1.0"
+description = "DOLMA backend — a ReAct agent for conversational calendar management (ELEC5620)"
+requires-python = ">=3.11"
+
+# Direct dependencies only; uv.lock pins these and everything they pull in, so the
+# whole transitive graph is reproducible without being listed here.
+#
+# The floors are the versions DOLMA was developed against, and each is capped below
+# the next major release: `uv lock --upgrade` can then take patches and minors, but
+# a breaking major (openai 3.x, for instance) only ever arrives as a deliberate,
+# reviewable edit to this file.
+dependencies = [
+    "flask>=3.1.2,<4",
+    "flask-cors>=6.0.1,<7",
+    "google-api-python-client>=2.185.0,<3",
+    "google-auth>=2.41.1,<3",
+    "google-auth-oauthlib>=1.2.2,<2",
+    "httpx>=0.28.1,<0.29",
+    "openai>=2.6.0,<3",
+    "python-dotenv>=1.1.1,<2",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
