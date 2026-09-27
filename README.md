@@ -21,7 +21,12 @@ Start the backend service by executing:
 python app.py
 ```
 
-### 3. Weather and Location
+### 3. User Accounts
+- Sign-up and sign-in are handled by the backend (`/api/auth/register`, `/api/auth/login`, `/api/auth/me`, `/api/logout`).
+- Users are stored in a local SQLite database (`backend/users.db`, created automatically on startup; override with `USERS_DB_PATH`). Passwords are stored only as salted hashes.
+- Login state is kept in the Flask session cookie, so set a strong `FLASK_SECRET_KEY` in `.env` outside local development.
+
+### 4. Weather and Location
 - Retrieves real-time weather data from OpenWeatherMap using browser geolocation.
 - If geolocation is unavailable, the backend uses IP-based location via `ip-api.com` for approximate results.
 - For local demos, ensure your browser allows location access when prompted on first load.
