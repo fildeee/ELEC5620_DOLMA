@@ -4,6 +4,7 @@ import dolmaFace from "../assets/dolma_face.png";
 import hat_classic from "../assets/hat_classic.png";
 import hat_scholar from "../assets/hat_scholar.png";
 import hat_strategist from "../assets/hat_strategist.png";
+import { getCurrentUser, logout } from "../auth.js";
 
 const HAT_STORAGE_KEY = "dolmaHat";
 const HAT_VARIANTS = {
@@ -472,6 +473,20 @@ export default function Home() {
     };
   }, []);
 
+  const currentUser = getCurrentUser();
+
+  const handleLogout = async () => {
+    if (!window.confirm("Log out of DOLMA?")) return;
+    try {
+      // Clear any server-side chat session state (e.g. pending events)
+      await fetch(apiUrl("/api/logout"), { method: "POST", credentials: "include" });
+    } catch (_) {
+      // Backend unreachable: still log out locally
+    }
+    logout();
+    navigate("/signin", { replace: true });
+  };
+
   return (
     <div className={`dolma-layout${isEntering ? " entering" : ""}`}>
       <aside className="dolma-sidebar">
@@ -492,14 +507,13 @@ export default function Home() {
           <button className="sidebar-btn" onClick={() => navigate("/settings")}>
             ⚙️ Settings
           </button>
-          <button
-            className="sidebar-btn"
-            onClick={() => {
-              alert("Logged out!");
-              navigate("/signin", { replace: true });
-            }}
-          >
-            Logout
+          {currentUser?.email && (
+            <p className="sidebar-user" title={currentUser.email}>
+              {currentUser.email}
+            </p>
+          )}
+          <button className="sidebar-btn logout-btn" onClick={handleLogout}>
+            ⎋ Log out
           </button>
         </div>
       </aside>
